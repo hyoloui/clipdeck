@@ -1,0 +1,122 @@
+import Testing
+import Foundation
+import CryptoKit
+@testable import ClipdeckCore
+
+@Test func insertThenReadBack() throws {
+    let (store, _) = try makeTempStore()
+    let result = try store.insert(textClip("안녕", app: "com.apple.Notes"))
+    guard case .inserted(let id) = result else { Issue.record("inserted 아님"); return }
+    let item = try #require(try store.item(id: id))
+    #expect(item.kind == .text)
+    #expect(item.preview == "안녕")
+    #expect(item.sourceAppBundleID == "com.apple.Notes")
+    #expect(try store.plainText(itemID: id) == "안녕")
+    #expect(try store.representations(itemID: id).count == 1)
+}
+
+@Test func duplicateHashBumps() throws {
+    let (store, _) = try makeTempStore()
+    let t0 = Date(timeIntervalSince1970: 1_000)
+    let t1 = Date(timeIntervalSince1970: 2_000)
+    guard case .inserted(let id) = try store.insert(textClip("a"), now: t0) else { Issue.record("inserted 아님"); return }
+    #expect(try store.insert(textClip("a"), now: t1) == .bumped(id))
+    let item = try #require(try store.item(id: id))
+    #expect(item.lastUsedAt == t1)
+    #expect(item.createdAt == t0)
+    #expect(try store.db.query("SELECT COUNT(*) AS n FROM items").first?["n"] == .int(1))
+}
+
+private func blobClip(_ data: Data) -> NewClip {
+    NewClip(kind: .image, preview: "img", plainText: nil, contentHash: "big-" + String(data.count),
+            sourceAppBundleID: nil, sourceAppName: nil, mcpHidden: false,
+            representations: [Representation(uti: "public.png", data: data)])
+}
+
+private func sha256Hex(_ data: Data) -> String {
+    SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+}
+
+@Test func largeRepresentationGoesToBlob() throws {
+    let (store, dir) = try makeTempStore()
+    let data = Data((0..<10_000_000).map { UInt8(truncatingIfNeeded: $0 &* 31) })
+    guard case .inserted(let id) = try store.insert(blobClip(data)) else { Issue.record("inserted 아님"); return }
+    let rows = try store.db.query("SELECT data, blob_path FROM item_representations WHERE item_id = ?", [.int(id)])
+    #expect(rows.first?["data"] == .null)
+    #expect(FileManager.default.fileExists(atPath: dir.appending(path: "blobs/" + sha256Hex(data)).path))
+    #expect(try store.representations(itemID: id).first?.data == data)
+}
+
+@Test func smallRepresentationStaysInline() throws {
+    let (store, dir) = try makeTempStore()
+    _ = try store.insert(textClip("작은 것"))
+    let blobs = dir.appending(path: "blobs").path
+    let files = (try? FileManager.default.contentsOfDirectory(atPath: blobs)) ?? []
+    #expect(files.isEmpty)
+}
+
+@Test func eraseHistoryKeepsPinboardItems() throws {
+    let (store, _) = try makeTempStore()
+    guard case .inserted(let keep) = try store.insert(textClip("keep")),
+          case .inserted(let drop) = try store.insert(textClip("drop")) else { Issue.record("inserted 아님"); return }
+    try store.db.execute("INSERT INTO pinboards(id, name, sort) VALUES (1, 'p', 0)")
+    try store.db.execute("INSERT INTO pinboard_items(pinboard_id, item_id) VALUES (1, ?)", [.int(keep)])
+    try store.eraseHistory()
+    #expect(try store.item(id: keep) != nil)
+    #expect(try store.item(id: drop) == nil)
+}
+
+@Test func deleteRemovesBlob() throws {
+    let (store, dir) = try makeTempStore()
+    let data = Data(repeating: 7, count: 100_000)
+    guard case .inserted(let id) = try store.insert(blobClip(data)) else { Issue.record("inserted 아님"); return }
+    let file = dir.appending(path: "blobs/" + sha256Hex(data))
+    #expect(FileManager.default.fileExists(atPath: file.path))
+    try store.delete(id: id)
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+    #expect(try store.item(id: id) == nil)
+}
+
+@Test func sharedBlobSurvivesUntilLastReference() throws {
+    let (store, dir) = try makeTempStore()
+    let data = Data(repeating: 9, count: 100_000)
+    var a = blobClip(data); a.contentHash = "a"
+    var b = blobClip(data); b.contentHash = "b"
+    guard case .inserted(let ida) = try store.insert(a), case .inserted(let idb) = try store.insert(b) else { Issue.record("inserted 아님"); return }
+    let file = dir.appending(path: "blobs/" + sha256Hex(data))
+    try store.delete(id: ida)
+    #expect(FileManager.default.fileExists(atPath: file.path))
+    try store.delete(id: idb)
+    #expect(!FileManager.default.fileExists(atPath: file.path))
+}
+
+@Test func hideFromMCPMarksExistingItems() throws {
+    let (store, _) = try makeTempStore()
+    guard case .inserted(let a) = try store.insert(textClip("1", app: "x.app")),
+          case .inserted(let b) = try store.insert(textClip("2", app: "x.app")),
+          case .inserted(let c) = try store.insert(textClip("3", app: "y.app")) else { Issue.record("inserted 아님"); return }
+    try store.hideFromMCP(appBundleID: "x.app")
+    #expect(try store.item(id: a)?.mcpHidden == true)
+    #expect(try store.item(id: b)?.mcpHidden == true)
+    #expect(try store.item(id: c)?.mcpHidden == false)
+    try store.setMCPHidden(id: a, false)
+    #expect(try store.item(id: a)?.mcpHidden == false)
+}
+
+@Test func markUsedUpdatesCounters() throws {
+    let (store, _) = try makeTempStore()
+    guard case .inserted(let id) = try store.insert(textClip("u"), now: Date(timeIntervalSince1970: 1)) else { Issue.record("inserted 아님"); return }
+    try store.markUsed(id: id, now: Date(timeIntervalSince1970: 5))
+    let item = try #require(try store.item(id: id))
+    #expect(item.lastUsedAt == Date(timeIntervalSince1970: 5))
+    #expect(item.useCount == 1)
+}
+
+@Test func concurrentReaderDoesNotLock() async throws {
+    let (writer, dir) = try makeTempStore()
+    let reader = try ClipStore(directory: dir)
+    let w = Task.detached { for i in 0..<200 { _ = try writer.insert(textClip("w\(i)")) } }
+    let r = Task.detached { for _ in 0..<200 { _ = try reader.item(id: 1) } }
+    try await w.value
+    try await r.value
+}
