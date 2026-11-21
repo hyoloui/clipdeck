@@ -94,4 +94,35 @@ import Foundation
         let rows = try store.db.query(sql, params).compactMap(ClipStore.clipItem)
         #expect(rows.map(\.preview) == ["visible"])
     }
+
+    @Test func sourceAppsRecentFirst() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.insert(textClip("a", app: "com.old"), now: Date(timeIntervalSince1970: 1))
+        _ = try store.insert(textClip("b", app: "com.new"), now: Date(timeIntervalSince1970: 3))
+        _ = try store.insert(textClip("c", app: "com.old"), now: Date(timeIntervalSince1970: 2))
+        _ = try store.insert(textClip("d"), now: Date(timeIntervalSince1970: 4)) // 출처 없음은 제외
+        let apps = try store.sourceApps()
+        #expect(apps.map(\.bundleID) == ["com.new", "com.old"])
+        #expect(try store.sourceApps(limit: 1).count == 1)
+    }
+
+    @Test func sourceAppsUsesLatestNameAndStableTies() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        func clip(_ t: String, bid: String, name: String) -> NewClip {
+            NewClip(kind: .text, preview: t, plainText: t, contentHash: "h-" + t, sourceAppBundleID: bid,
+                    sourceAppName: name, mcpHidden: false,
+                    representations: [Representation(uti: "public.utf8-plain-text", data: Data(t.utf8))])
+        }
+        // 이름이 바뀐 앱: 사전순으로는 "Alpha"가 앞이지만 최근 이름은 "Zed"
+        _ = try store.insert(clip("a", bid: "com.x", name: "Alpha"), now: Date(timeIntervalSince1970: 1))
+        _ = try store.insert(clip("b", bid: "com.x", name: "Zed"), now: Date(timeIntervalSince1970: 5))
+        // 시각이 같은 두 앱은 번들 ID 오름차순
+        _ = try store.insert(clip("c", bid: "com.b", name: "B"), now: Date(timeIntervalSince1970: 3))
+        _ = try store.insert(clip("d", bid: "com.a", name: "A"), now: Date(timeIntervalSince1970: 3))
+        let apps = try store.sourceApps()
+        #expect(apps.map(\.bundleID) == ["com.x", "com.a", "com.b"])
+        #expect(apps.first?.name == "Zed")
+    }
 }
