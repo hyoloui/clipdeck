@@ -13,19 +13,20 @@ extension ClipStore {
         var conditions: [String] = []
         var params: [SQLValue] = []
 
-        let text = q.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !text.isEmpty {
-            if text.count >= 3 {
-                // trigram은 3자 이상에서만 동작한다. 큰따옴표 구문으로 감싸 FTS 연산자를 무력화한다.
-                conditions.append("items.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)")
-                params.append(.text("\"" + text.replacingOccurrences(of: "\"", with: "\"\"") + "\""))
-            } else {
-                let escaped = text.replacingOccurrences(of: "\\", with: "\\\\")
-                    .replacingOccurrences(of: "%", with: "\\%")
-                    .replacingOccurrences(of: "_", with: "\\_")
-                conditions.append("items.plain_text LIKE ? ESCAPE '\\'")
-                params.append(.text("%" + escaped + "%"))
-            }
+        // 공백으로 나눈 단어(최대 8개)를 모두 포함해야 한다. 3자 이상은 FTS 구문, 미만은 LIKE.
+        let terms = q.text.split(whereSeparator: \.isWhitespace).prefix(8).map(String.init)
+        let long = terms.filter { $0.count >= 3 }
+        if !long.isEmpty {
+            // 큰따옴표 구문으로 감싸 FTS 연산자를 무력화하고, 구문들은 암묵적 AND로 묶인다.
+            conditions.append("items.id IN (SELECT rowid FROM items_fts WHERE items_fts MATCH ?)")
+            params.append(.text(long.map { "\"" + $0.replacingOccurrences(of: "\"", with: "\"\"") + "\"" }.joined(separator: " ")))
+        }
+        for term in terms where term.count < 3 {
+            let escaped = term.replacingOccurrences(of: "\\", with: "\\\\")
+                .replacingOccurrences(of: "%", with: "\\%")
+                .replacingOccurrences(of: "_", with: "\\_")
+            conditions.append("items.plain_text LIKE ? ESCAPE '\\'")
+            params.append(.text("%" + escaped + "%"))
         }
         if let kind = q.kind {
             conditions.append("items.kind = ?")

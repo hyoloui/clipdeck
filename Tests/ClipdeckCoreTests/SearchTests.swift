@@ -29,7 +29,20 @@ import Foundation
         for text in ["\"", "*", "-", "NEAR(", "'", "\"quoted\"", "NEAR(x)", "-dash-", "AND OR NOT"] {
             _ = try store.search(SearchQuery(text: text))
         }
-        #expect(try store.search(SearchQuery(text: "\"quoted\"")).count == 1)
+        for text in ["\"quoted\"", "-dash-", "NEAR(x)"] {
+            #expect(try store.search(SearchQuery(text: text)).count == 1, "\(text)")
+        }
+    }
+
+    @Test func multiWordMatchesAllTerms() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.insert(textClip("클립보드 기록 정리"))
+        #expect(try store.search(SearchQuery(text: "클립보드 정리")).count == 1)
+        #expect(try store.search(SearchQuery(text: "클립보드 없는단어")).isEmpty)
+        #expect(try store.search(SearchQuery(text: "정리 기록")).count == 1)
+        #expect(try store.search(SearchQuery(text: "정리 a")).isEmpty)
+        #expect(try store.search(SearchQuery(text: "정리 기")).count == 1)
     }
 
     @Test func filtersCombine() throws {
@@ -52,7 +65,7 @@ import Foundation
     @Test func pinboardFilter() throws {
         let (store, dir) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
-        guard case .inserted(let a) = try store.insert(textClip("alpha")) else { return }
+        guard case .inserted(let a) = try store.insert(textClip("alpha")) else { Issue.record("inserted 아님"); return }
         _ = try store.insert(textClip("beta"))
         try store.db.execute("INSERT INTO pinboards(id, name, sort) VALUES (1, 'b', 0)")
         try store.db.execute("INSERT INTO pinboard_items(pinboard_id, item_id) VALUES (1, ?)", [.int(a)])
@@ -64,7 +77,7 @@ import Foundation
         let (store, dir) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let t0 = Date(timeIntervalSince1970: 1_000_000)
-        guard case .inserted(let a) = try store.insert(textClip("first"), now: t0) else { return }
+        guard case .inserted(let a) = try store.insert(textClip("first"), now: t0) else { Issue.record("inserted 아님"); return }
         _ = try store.insert(textClip("second"), now: t0 + 10)
         #expect(try store.search(SearchQuery()).first?.id != a)
         try store.markUsed(id: a, now: t0 + 20)
