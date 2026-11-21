@@ -24,7 +24,7 @@ public enum SecretDetector {
 
     // 키-값 형태. 값은 따옴표를 뺀 본문(3번째 캡처)만 판정에 쓴다.
     nonisolated(unsafe) private static let keyValue = try! Regex(
-        #"(?i)(?:password|passwd|secret|token|api[_-]?key)(?:[_-]?(?:key|token))?["']?[ \t]*([:=])[ \t]*(["']?)([^\s"']{6,})"#)
+        #"(?i)(?:password|passwd|secret|token|api[_-]?key)[A-Za-z0-9_-]*["']?[ \t]*([:=])[ \t]*(["']?)([^\s"']{6,})"#)
 
     nonisolated(unsafe) private static let uuid = try! Regex(
         #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#)
@@ -43,7 +43,7 @@ public enum SecretDetector {
     private static func isRealSecretValue(_ m: Regex<AnyRegexOutput>.Match) -> Bool {
         guard let sep = m.output[1].substring, let quote = m.output[2].substring,
               let value = m.output[3].substring else { return false }
-        if let first = value.first, "$<{%(".contains(first) { return false }
+        if let first = value.first, "$<{%([".contains(first) { return false }
         // 따옴표 없는 `:` 뒤 값이 타입 이름이면 선언이다(`token: String`, `password: String?`).
         // 영문자만이라는 이유로 통째로 빼면 `password: correcthorsebattery`를 놓치므로 타입 이름만 거른다.
         if sep == ":" && quote.isEmpty && isTypeName(value) { return false }
@@ -55,19 +55,25 @@ public enum SecretDetector {
         "undefined", "true", "false",
     ]
 
-    /// 뒤의 `; , ? !`를 뗀 값이 대문자로 시작하는 식별자(String, Int, Data, Token)이거나 소문자 타입 키워드인가
+    nonisolated(unsafe) private static let sizedNumeric = try! Regex(#"(?:U?Int|Float)(?:8|16|32|64)"#)
+    nonisolated(unsafe) private static let genericType = try! Regex(#"[A-Z][A-Za-z]*<.*>"#)
+
+    /// 뒤의 `; , ? !`를 뗀 값이 타입 이름인가: 대문자로 시작하는 영문자만(String, Data, Token),
+    /// `Int64`·`UInt8`·`Float32` 꼴, `Optional<String>` 꼴, 또는 소문자 타입 키워드.
+    /// 숫자가 섞인 `Summer2024`·`P4ssw0rd`·`Welcome1` 같은 비밀번호는 타입 이름이 아니다.
     private static func isTypeName(_ value: Substring) -> Bool {
-        let v = value.reversed().drop { ";,?!".contains($0) }.reversed()
+        let v = String(value.reversed().drop { ";,?!".contains($0) }.reversed())
         guard let first = v.first else { return false }
-        let word = String(v)
-        if typeKeywords.contains(word.lowercased()) && word == word.lowercased() { return true }
-        return first.isUppercase && v.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+        if typeKeywords.contains(v) { return true }
+        if v.wholeMatch(of: sizedNumeric) != nil || v.wholeMatch(of: genericType) != nil { return true }
+        return first.isUppercase && v.allSatisfy { $0.isASCII && $0.isLetter }
     }
 
     /// 고엔트로피 판정(공백으로 나눈 토큰 단위).
-    /// 조건: 앞뒤 따옴표·괄호를 뗀 토큰이 24자 이상, 문자가 `[A-Za-z0-9_+=-]`뿐, 대·소문자·숫자 모두 포함,
+    /// 조건: 앞뒤 따옴표·괄호를 뗀 토큰이 24자 이상, 문자가 `[A-Za-z0-9_+=/-]`뿐, 대·소문자·숫자 모두 포함,
     /// 순수 hex(git SHA·sha256)·UUID 아님, 엔트로피 4.0 bit/문자 이상, 단어 조각 비율 50% 이하.
-    /// - 문자 집합 제한: `/ \ . : ?`가 들어가면 경로·도메인·URL이다. 검토에서 `/Users/.../SecretDetector.swift`,
+    /// - 문자 집합 제한: `\ . : ?`가 들어가면 경로·도메인·URL이다(`/`는 표준 base64 키에 쓰여 허용하고, 점 없는 경로는
+    ///   단어 조각 비율로 거른다). 검토에서 `/Users/.../SecretDetector.swift`,
     ///   `Sources/.../SecretDetector.swift:42`, `docs/ADR-0003-...md`, `C:\Users\...docx`,
     ///   `www.youtube.com/watch?v=...`, `com.example.clipdeck.MainActivity2Kt`가 엔트로피 4.0만으로 잡혔다.
     /// - 단어 조각 비율: 엔트로피 4.0은 24자 이상이면 알파벳이 거의 반복되지 않는 식별자도 넘는다
@@ -78,7 +84,8 @@ public enum SecretDetector {
     nonisolated(unsafe) private static let wordPiece = try! Regex(#"[A-Z]?[a-z]{3,}"#)
 
     private static func isHighEntropy(_ raw: Substring) -> Bool {
-        let token = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`,;()[]{}<>"))
+        // 문장 끝 구두점(`키는 ....`, `Bearer ....`)과 따옴표·괄호를 양쪽에서 뗀다
+        let token = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`,;()[]{}<>.:?!"))
         guard token.count >= 24, !token.contains("://") else { return false }
         var hasUpper = false, hasLower = false, hasDigit = false, allHex = true
         for ch in token.unicodeScalars {
@@ -86,7 +93,7 @@ public enum SecretDetector {
             case 0x41...0x5A: hasUpper = true
             case 0x61...0x7A: hasLower = true
             case 0x30...0x39: hasDigit = true
-            case 0x5F, 0x2B, 0x3D, 0x2D: break // _ + = -
+            case 0x5F, 0x2B, 0x3D, 0x2D, 0x2F: break // _ + = - /
             default: return false
             }
             if !ch.properties.isASCIIHexDigit { allHex = false }

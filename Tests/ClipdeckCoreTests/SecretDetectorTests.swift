@@ -24,6 +24,19 @@ private let detectCases: [(name: String, text: String)] = [
     ("yaml-postgres", "POSTGRES_PASSWORD: postgres"),
     ("pgp-key", "-----BEGIN PGP " + "PRIVATE KEY BLOCK-----\nlQdGBF"),
     ("base64url-40", "Zx9Qm2Lr7Tn4Vb8Kp1Hs6" + "Wd3Yc5Jf0Ga2Ne9Ru4Mt7"),
+    ("pw-summer", "password: Summer2024"),
+    ("pw-summer-bang", "password: Summer2024!"),
+    ("pw-leet", "password: P4ssw0rd"),
+    ("pw-welcome", "password: Welcome1"),
+    ("pw-db", "DB_PASSWORD: Tr0ub4dor3"),
+    ("secret-mixed", "secret: Xk3pQ9rT2mL8"),
+    ("sentence-period", "키는 aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY."),
+    ("bearer-period", "Bearer aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY."),
+    ("base64-slash", "Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2N"),
+    ("aws-secret", "aws_secret_access_key = Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2N"),
+    ("aws-short", "aws_secret_access_key = abcdefgh12345678"),
+    ("kv-suffix", "client_secret_key: abcdefgh1234"),
+    ("kv-v2", "auth_token_v2=abcdefgh1234"),
     ("kv-json", "{\"access_token\": \"abc123def456\"}"),
     ("high-entropy", "aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY"),
     ("embedded-in-doc", "회의록\n내용 정리\n배포 키는 " + "gh" + "p_" + body36 + " 입니다\n끝"),
@@ -57,6 +70,13 @@ private let safeCases: [(name: String, text: String)] = [
     ("id-nskeyed", "NSKeyedUnarchiverDelegate"),
     ("kebab-branch", "feature-add-clipboard-history-v2-final"),
     ("kv-newline", "token =\n  recalculated later"),
+    ("type-optional-generic", "token: Optional<String>"),
+    ("type-array", "token: [String]"),
+    ("path-components", "src/components/UserProfile2CardView"),
+    ("git-ref", "refs/heads/release/2026-11-Hotfix3"),
+    ("git-remote", "origin/feature/AS-1310-authFetch-Phase2a"),
+    ("repo-path", "example-org/web-frontend-monorepo2"),
+    ("type-int64", "count: Int64"),
     ("empty", ""),
 ]
 
@@ -67,6 +87,31 @@ private let safeCases: [(name: String, text: String)] = [
 
     @Test(arguments: safeCases) func ignores(_ c: (name: String, text: String)) {
         #expect(!SecretDetector.isSecret(c.text), "\(c.name)")
+    }
+
+    /// 고정 시드 난수(SplitMix64)로 만든 무작위 키의 탐지율 회귀 방지
+    @Test func randomKeysAreMostlyDetected() {
+        struct SplitMix64 {
+            var state: UInt64
+            mutating func next() -> UInt64 {
+                state &+= 0x9E37_79B9_7F4A_7C15
+                var z = state
+                z = (z ^ (z >> 30)) &* 0xBF58_476D_1CE4_E5B9
+                z = (z ^ (z >> 27)) &* 0x94D0_49BB_1331_11EB
+                return z ^ (z >> 31)
+            }
+        }
+        var rng = SplitMix64(state: 20_261_121)
+        func make(_ alphabet: [Character], _ n: Int) -> String {
+            String((0..<n).map { _ in alphabet[Int(rng.next() % UInt64(alphabet.count))] })
+        }
+        let base62 = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789")
+        let base64 = base62 + ["/", "+"]
+        let hit62 = (0..<500).filter { _ in SecretDetector.isSecret(make(base62, 32)) }.count
+        let hit64 = (0..<500).filter { _ in SecretDetector.isSecret(make(base64, 40)) }.count
+        print("detection rate base62x32 = \(hit62)/500, base64x40 = \(hit64)/500")
+        #expect(hit62 >= 475)
+        #expect(hit64 >= 475)
     }
 
     @Test func largeTextFinishesFast() {
