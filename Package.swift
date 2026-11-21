@@ -15,7 +15,9 @@ let package = Package(
         .target(name: "ClipdeckMCPKit", dependencies: ["ClipdeckCore"]),
         .executableTarget(name: "Clipdeck", dependencies: ["ClipdeckCore"]),
         .executableTarget(name: "clipdeck-mcp", dependencies: ["ClipdeckMCPKit"]),
-        .testTarget(name: "ClipdeckCoreTests", dependencies: ["ClipdeckCore"]),
-        .testTarget(name: "ClipdeckMCPKitTests", dependencies: ["ClipdeckMCPKit"]),
+        .testTarget(name: "ClipdeckCoreTests", dependencies: ["ClipdeckCore"],
+                    swiftSettings: [.unsafeFlags(["-plugin-path", "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing"])]),
+        .testTarget(name: "ClipdeckMCPKitTests", dependencies: ["ClipdeckMCPKit"],
+                    swiftSettings: [.unsafeFlags(["-plugin-path", "/Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing"])]),
     ]
 )
