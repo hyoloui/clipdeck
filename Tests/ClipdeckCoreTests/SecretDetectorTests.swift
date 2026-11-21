@@ -125,13 +125,29 @@ private let safeCases: [(name: String, text: String)] = [
         #expect(elapsed < 2)
     }
 
-    @Test func jwtPrefixRepeatFinishesFast() {
-        let text = String(repeating: "-eyJ", count: 65_536 / 4)
+    @Test(.serialized, arguments: ["-eyJ", "eyJ", "xeyJ."])
+    func jwtPrefixRepeatFinishesFast(_ unit: String) {
+        let text = String(repeating: unit, count: 65_536 / unit.count)
         let start = Date()
         _ = SecretDetector.isSecret(text)
         let elapsed = Date().timeIntervalSince(start)
-        print("jwtPrefixRepeat: \(elapsed)s")
+        print("jwtPrefixRepeat \(unit): \(elapsed)s")
         #expect(elapsed < 2)
+    }
+
+    private static func jwt(payloadLength: Int) -> String {
+        let payload = String(repeating: "aB3dE6gH9jK2", count: payloadLength / 12 + 1).prefix(payloadLength)
+        return "ey" + "JhbGciOiJIUzI1NiJ9." + "ey" + payload + "." + "dBjftJeZ4CVPmB92K27uhbUJU1p1r"
+    }
+
+    @Test(arguments: [3000, 10_000])
+    func detectsLongJWTPayload(_ n: Int) {
+        #expect(SecretDetector.isSecret(Self.jwt(payloadLength: n)))
+    }
+
+    @Test(arguments: ["x-", "--", "Authorization:Bearer-"])
+    func detectsJWTAfterDash(_ prefix: String) {
+        #expect(SecretDetector.isSecret(prefix + Self.jwt(payloadLength: 40)))
     }
 
     @Test func largeTextFinishesFast() {
