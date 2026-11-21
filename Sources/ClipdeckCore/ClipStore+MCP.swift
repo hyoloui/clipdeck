@@ -49,8 +49,10 @@ extension ClipStore {
 
     /// 보이는 항목의 사용 기록만 갱신한다(숨김·없는 항목이면 아무것도 하지 않는다).
     public func mcpMarkUsed(id: Int64) throws {
-        guard try mcpItem(id: id) != nil else { return }
-        try markUsed(id: id)
+        try db.transaction {
+            try db.execute("UPDATE items SET last_used_at = ?, use_count = use_count + 1 WHERE id = ? AND mcp_hidden = 0",
+                           [.double(Date.now.timeIntervalSince1970), .int(id)])
+        }
     }
 
     public enum MCPCreateResult: Equatable, Sendable {
@@ -58,20 +60,32 @@ extension ClipStore {
         /// 탐지기가 비밀값으로 판정해 저장은 했지만 MCP에서는 숨겼다.
         case hidden
         case rejected
+        /// 최근 1시간 생성 상한(200개)에 걸렸다. 텍스트 내용과 무관하게 같은 결과다.
+        case rateLimited
     }
+
+    static let mcpSourceBundleID = "local.hyoloui.clipdeck.mcp"
+    static let mcpCreateLimit = 200
 
     /// MCP가 만든 텍스트 항목을 저장한다. 호출마다 새 행을 만들고(hash에 UUID를 섞어 중복 제거를 하지 않는다),
     /// 캡처된 행도 이전에 MCP가 만든 행도(사용자가 숨겼을 수 있다) 절대 건드리지 않는다. 응답은 호출자 텍스트의 탐지기 판정으로만 정해지므로,
     /// 저장소에 같은 내용의 숨김 항목이 있는지 알아낼 수 없다.
-    public func mcpCreateText(_ text: String) throws -> MCPCreateResult {
+    public func mcpCreateText(_ text: String, now: Date = .now) throws -> MCPCreateResult {
         guard var clip = ClipBuilder.make(
             representations: [Representation(uti: PasteboardTypes.plainText, data: Data(text.utf8))],
-            sourceAppBundleID: "local.hyoloui.clipdeck.mcp", sourceAppName: "MCP",
+            sourceAppBundleID: Self.mcpSourceBundleID, sourceAppName: "MCP",
             policy: CapturePolicy(detectSecrets: true)) else { return .rejected }
         clip.contentHash = SHA256.hash(data: Data(("mcp\u{0}" + UUID().uuidString + "\u{0}" + text).utf8)).map { String(format: "%02x", $0) }.joined()
-        let id: Int64 = switch try insert(clip) {
-        case .inserted(let id), .bumped(let id): id
+        return try db.transaction {
+            // 상한 검사는 숨김 행까지 센다. 쓰기 잠금 안에서 해서 동시 호출에도 뚫리지 않는다.
+            let since = now.timeIntervalSince1970 - 3600
+            if case .int(let n)? = try db.query("SELECT COUNT(*) AS n FROM items WHERE source_app_bundle_id = ? AND created_at > ?",
+                                                [.text(Self.mcpSourceBundleID), .double(since)]).first?["n"],
+               n >= Int64(Self.mcpCreateLimit) { return .rateLimited }
+            let id: Int64 = switch try insertInTransaction(clip, now: now) {
+            case .inserted(let id), .bumped(let id): id
+            }
+            return clip.mcpHidden ? .hidden : .created(id: id)
         }
-        return clip.mcpHidden ? .hidden : .created(id: id)
     }
 }

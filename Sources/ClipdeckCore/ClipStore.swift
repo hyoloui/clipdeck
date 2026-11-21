@@ -29,37 +29,45 @@ public final class ClipStore: @unchecked Sendable {
     // MARK: 쓰기
 
     public func insert(_ clip: NewClip, now: Date = .now) throws -> InsertResult {
-        try db.transaction {
-            let ts = now.timeIntervalSince1970
-            if let row = try db.query("SELECT id FROM items WHERE content_hash = ?", [.text(clip.contentHash)]).first,
-               case .int(let id) = row["id"] {
-                // 한번 숨겨진 항목은 bump로 풀리지 않는다.
-                try db.execute("UPDATE items SET last_used_at = ?, use_count = use_count + 1, mcp_hidden = max(mcp_hidden, ?) WHERE id = ?",
-                               [.double(ts), .int(clip.mcpHidden ? 1 : 0), .int(id)])
-                return .bumped(id)
-            }
-            try db.execute("""
-                INSERT INTO items(kind, preview, plain_text, content_hash, source_app_bundle_id, source_app_name,
-                                  mcp_hidden, created_at, last_used_at, use_count)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
-                """, [
-                .text(clip.kind.rawValue), .text(clip.preview), clip.plainText.map { .text($0) } ?? .null,
-                .text(clip.contentHash), clip.sourceAppBundleID.map { .text($0) } ?? .null,
-                clip.sourceAppName.map { .text($0) } ?? .null, .int(clip.mcpHidden ? 1 : 0), .double(ts), .double(ts),
-            ])
-            let id = db.lastInsertRowID
-            for rep in clip.representations {
-                if rep.data.count > Self.blobThreshold {
-                    let path = try writeBlob(rep.data)
-                    try db.execute("INSERT INTO item_representations(item_id, uti, data, blob_path) VALUES (?, ?, NULL, ?)",
-                                   [.int(id), .text(rep.uti), .text(path)])
-                } else {
-                    try db.execute("INSERT INTO item_representations(item_id, uti, data, blob_path) VALUES (?, ?, ?, NULL)",
-                                   [.int(id), .text(rep.uti), .blob(rep.data)])
-                }
-            }
-            return .inserted(id)
+        try db.transaction { try insertInTransaction(clip, now: now) }
+    }
+
+    /// 이미 열린 트랜잭션 안에서 삽입한다(호출자가 트랜잭션을 책임진다).
+    func insertInTransaction(_ clip: NewClip, now: Date) throws -> InsertResult {
+        let ts = now.timeIntervalSince1970
+        if let row = try db.query("SELECT id FROM items WHERE content_hash = ?", [.text(clip.contentHash)]).first,
+           case .int(let id) = row["id"] {
+            // 한번 숨겨진 항목은 bump로 풀리지 않는다.
+            try db.execute("UPDATE items SET last_used_at = ?, use_count = use_count + 1, mcp_hidden = max(mcp_hidden, ?) WHERE id = ?",
+                           [.double(ts), .int(clip.mcpHidden ? 1 : 0), .int(id)])
+            return .bumped(id)
         }
+        // 삭제된 id를 재사용하지 않도록 카운터로 id를 정한다. 카운터가 MAX(id)를 못 따라가면 보정한다.
+        var next: Int64 = 1
+        if case .int(let c)? = try db.query("SELECT value FROM meta WHERE key = 'next_item_id'").first?["value"] { next = c }
+        if case .int(let m)? = try db.query("SELECT MAX(id) AS m FROM items").first?["m"], m >= next { next = m + 1 }
+        try db.execute("INSERT OR REPLACE INTO meta(key, value) VALUES ('next_item_id', ?)", [.int(next + 1)])
+        try db.execute("""
+            INSERT INTO items(id, kind, preview, plain_text, content_hash, source_app_bundle_id, source_app_name,
+                              mcp_hidden, created_at, last_used_at, use_count)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)
+            """, [
+            .int(next), .text(clip.kind.rawValue), .text(clip.preview), clip.plainText.map { .text($0) } ?? .null,
+            .text(clip.contentHash), clip.sourceAppBundleID.map { .text($0) } ?? .null,
+            clip.sourceAppName.map { .text($0) } ?? .null, .int(clip.mcpHidden ? 1 : 0), .double(ts), .double(ts),
+        ])
+        let id = next
+        for rep in clip.representations {
+            if rep.data.count > Self.blobThreshold {
+                let path = try writeBlob(rep.data)
+                try db.execute("INSERT INTO item_representations(item_id, uti, data, blob_path) VALUES (?, ?, NULL, ?)",
+                               [.int(id), .text(rep.uti), .text(path)])
+            } else {
+                try db.execute("INSERT INTO item_representations(item_id, uti, data, blob_path) VALUES (?, ?, ?, NULL)",
+                               [.int(id), .text(rep.uti), .blob(rep.data)])
+            }
+        }
+        return .inserted(id)
     }
 
     public func markUsed(id: Int64, now: Date = .now) throws {

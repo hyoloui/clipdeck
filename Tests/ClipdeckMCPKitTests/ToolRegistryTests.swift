@@ -384,4 +384,35 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         let desc = try #require(reg.definitions.first { $0.name == "copy_to_clipboard" }).description
         #expect(desc.contains("create_text_item"))
     }
+
+    @Test func deletedAndHiddenLookTheSame() throws {
+        let (a, dirA) = try makeTempStore()
+        let (b, dirB) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dirA); try? FileManager.default.removeItem(at: dirB) }
+        // A: 보이는 행(1) + 숨김 행(2)
+        try insertText(a, "보이는 항목")
+        try insertText(a, "숨김 항목", hidden: true)
+        // B: 보이는 행(1) + 넣었다 지운 행(2)
+        try insertText(b, "보이는 항목")
+        let gone = try insertText(b, "지울 항목")
+        try b.delete(id: gone)
+        let ra = makeRegistry(a).call(name: "create_text_item", arguments: ["text": .string("새 메모입니다")])
+        let rb = makeRegistry(b).call(name: "create_text_item", arguments: ["text": .string("새 메모입니다")])
+        #expect(text(ra) == text(rb))
+        #expect(text(ra).contains("3"))
+        let ga = makeRegistry(a).call(name: "get_item", arguments: ["id": .number(2)])
+        let gb = makeRegistry(b).call(name: "get_item", arguments: ["id": .number(2)])
+        #expect(ga == gb)
+        #expect(ga.isError)
+    }
+
+    @Test func createTextRateLimitMessage() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let reg = makeRegistry(store)
+        for i in 0..<200 { #expect(!reg.call(name: "create_text_item", arguments: ["text": .string("메모 \(i)")]).isError) }
+        let r = reg.call(name: "create_text_item", arguments: ["text": .string("초과 메모")])
+        #expect(r.isError)
+        #expect(text(r).contains("상한 200개"))
+    }
 }

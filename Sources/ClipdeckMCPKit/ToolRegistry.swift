@@ -282,6 +282,8 @@ public final class ToolRegistry {
         switch try store.mcpCreateText(text) {
         case .rejected:
             throw ToolError("저장할 수 있는 텍스트가 아닙니다 (text cannot be saved)")
+        case .rateLimited:
+            throw ToolError("최근 1시간 동안 만든 항목이 너무 많습니다(상한 200개). 잠시 뒤 다시 시도하세요. (too many items created in the last hour; limit 200)")
         case .hidden:
             notifyChange()
             let note = board == nil ? "" : " 보드에는 추가하지 않음 (not added to the pinboard)."

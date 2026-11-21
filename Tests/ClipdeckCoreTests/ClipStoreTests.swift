@@ -160,3 +160,50 @@ private func sha256Hex(_ data: Data) -> String {
     #expect(try store.db.query("SELECT blob_path FROM item_representations WHERE item_id = ?", [.int(a)]).first?["blob_path"] == .null)
     #expect(try store.db.query("SELECT blob_path FROM item_representations WHERE item_id = ?", [.int(b)]).first?["blob_path"] != .null)
 }
+
+@Test func idsAreNeverReused() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    var ids: [Int64] = []
+    for s in ["one", "two", "three"] {
+        if case .inserted(let id) = try store.insert(textClip(s)) { ids.append(id) }
+    }
+    #expect(ids == [1, 2, 3])
+    try store.delete(id: 3)
+    guard case .inserted(let next) = try store.insert(textClip("four")) else { Issue.record("삽입 실패"); return }
+    #expect(next == 4)
+}
+
+@Test func counterCorrectsToMaxIdPlusOne() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    // 외부에서 카운터 밖으로 행을 직접 넣은 경우
+    try store.db.execute("INSERT INTO items(id, kind, preview, plain_text, content_hash) VALUES (50, 'text', 'x', 'x', 'hx')")
+    guard case .inserted(let next) = try store.insert(textClip("after")) else { Issue.record("삽입 실패"); return }
+    #expect(next == 51)
+}
+
+@Test func mcpMarkUsedIgnoresHidden() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    guard case .inserted(let hid) = try store.insert(textClip("secret-ish", hidden: true)),
+          case .inserted(let vis) = try store.insert(textClip("visible")) else { return }
+    try store.mcpMarkUsed(id: hid)
+    try store.mcpMarkUsed(id: vis)
+    #expect(try store.item(id: hid)?.useCount == 0)
+    #expect(try store.item(id: vis)?.useCount == 1)
+}
+
+@Test func createTextRateLimited() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let now = Date(timeIntervalSince1970: 1_800_000_000)
+    for i in 0..<200 {
+        guard case .created = try store.mcpCreateText("메모 번호 \(i)", now: now) else { Issue.record("\(i)번째 실패"); return }
+    }
+    #expect(try store.mcpCreateText("한 개 더 있는 메모", now: now) == .rateLimited)
+    // 비밀값이어도 같은 응답
+    #expect(try store.mcpCreateText("sk-" + String(repeating: "aB3dE6gH9j", count: 4), now: now) == .rateLimited)
+    #expect(try store.db.query("SELECT COUNT(*) AS n FROM items").first?["n"] == .int(200))
+    #expect(try store.mcpCreateText("한 개 더 있는 메모", now: now.addingTimeInterval(3601)) != .rateLimited)
+}
