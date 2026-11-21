@@ -49,6 +49,7 @@ Clipdeck는 이 Mac의 클립보드 기록을 보관한다. `clipdeck` MCP 서�
 - 저장한 텍스트가 비밀값으로 판정되면 "숨김 처리됨"이라는 안내만 오고 id는 오지 않는다. `pinboard`를 줬어도 보드에 추가되지 않는다. 사용자에게 저장은 됐지만 MCP에서는 볼 수 없다고 알린다.
 - `copy_to_clipboard(text)`로 복사한 텍스트는 기록에 남지 않는다. 남기려면 `create_text_item`을 쓴다.
 - 입력 텍스트(`create_text_item`, `copy_to_clipboard(text)`)는 100KB를 넘으면 오류다. `get_item` 출력은 100KB에서 잘리고 잘렸다고 표시된다.
+- `get_item`과 검색이 닿는 텍스트는 항목당 앞 100KB뿐이다. 그 뒤의 내용은 검색되지 않고 `get_item`으로도 나오지 않는다.
 - 삭제 도구는 없다. 항목 삭제·비우기는 Clipdeck 앱에서 사용자가 직접 한다. 요청받으면 앱에서 하라고 안내한다.
 
 ## 주의
