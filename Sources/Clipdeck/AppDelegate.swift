@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var store: ClipStore?
     private var monitor: PasteboardMonitor?
     private var statusItem: StatusItemController?
+    private var panelController: PanelController?
+    private var hotKey: GlobalHotKey?
     private var purgeTimer: Timer?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -23,7 +25,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         self.store = store
 
+        let panel = PanelController(store: store, settings: settings)
+        panelController = panel
+        hotKey = GlobalHotKey(spec: settings.load().hotKey) { [weak panel] in panel?.toggle() }
+
         statusItem = StatusItemController(store: store, settings: settings)
+        statusItem?.onOpen = { [weak panel] in panel?.toggle() }
         monitor = PasteboardMonitor(store: store, settings: settings, onCapture: {})
         monitor?.start()
 
