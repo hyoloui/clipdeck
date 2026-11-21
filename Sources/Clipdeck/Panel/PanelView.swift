@@ -11,6 +11,8 @@ final class PanelPresence: ObservableObject {
     /// 패널을 열 때마다 1씩 늘어난다(스크롤 위치 초기화용)
     @Published var generation = 0
     /// 앱 필터 메뉴 목록. 열 때 한 번만 읽는다(타이핑마다 읽지 않는다).
+    /// 푸터에 보이는 "일반 텍스트로 붙여넣기" 키 표기
+    @Published var plainTextHint = "⇧↩"
     @Published var apps: [(bundleID: String, name: String)] = []
     /// 선택 행 위치(⌘P 메뉴 위치용). 화면을 다시 그릴 필요가 없어 @Published가 아니다.
     var selectedRowFrame: CGRect = .zero
@@ -61,7 +63,6 @@ struct PanelView: View {
     @ObservedObject var model: PanelModel
     @ObservedObject var presence: PanelPresence
     let loader: PreviewLoader
-    let plainTextHint: String
     let onActivate: (ClipItem) -> Void
     let onNewBoard: () -> Void
 
@@ -231,7 +232,7 @@ struct PanelView: View {
     }
 
     private var footer: some View {
-        Text("↩ 붙여넣기   \(plainTextHint) 일반 텍스트   ⌘1-9 바로   ⌘P 고정   ⌘H MCP 숨김   ⌫ 삭제   esc 닫기")
+        Text("↩ 붙여넣기   \(presence.plainTextHint) 일반 텍스트   ⌘1-9 바로   ⌘P 고정   ⌘H MCP 숨김   ⌫ 삭제   esc 닫기")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
