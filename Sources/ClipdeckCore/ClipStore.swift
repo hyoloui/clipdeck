@@ -33,7 +33,9 @@ public final class ClipStore: @unchecked Sendable {
             let ts = now.timeIntervalSince1970
             if let row = try db.query("SELECT id FROM items WHERE content_hash = ?", [.text(clip.contentHash)]).first,
                case .int(let id) = row["id"] {
-                try db.execute("UPDATE items SET last_used_at = ?, use_count = use_count + 1 WHERE id = ?", [.double(ts), .int(id)])
+                // 한번 숨겨진 항목은 bump로 풀리지 않는다.
+                try db.execute("UPDATE items SET last_used_at = ?, use_count = use_count + 1, mcp_hidden = max(mcp_hidden, ?) WHERE id = ?",
+                               [.double(ts), .int(clip.mcpHidden ? 1 : 0), .int(id)])
                 return .bumped(id)
             }
             try db.execute("""
@@ -73,7 +75,7 @@ public final class ClipStore: @unchecked Sendable {
 
     /// Pinboard에 들어 있지 않은 항목을 모두 지운다.
     public func eraseHistory() throws {
-        try deleteItems(where: "id NOT IN (SELECT item_id FROM pinboard_items)", params: [])
+        try deleteItems(where: "NOT EXISTS (SELECT 1 FROM pinboard_items WHERE item_id = items.id)", params: [])
     }
 
     public func setMCPHidden(id: Int64, _ hidden: Bool) throws {
@@ -118,12 +120,11 @@ public final class ClipStore: @unchecked Sendable {
 
     public func representations(itemID: Int64) throws -> [Representation] {
         try db.query("SELECT uti, data, blob_path FROM item_representations WHERE item_id = ? ORDER BY rowid",
-                     [.int(itemID)]).compactMap { row in
+                     [.int(itemID)]).compactMap { row -> Representation? in
             guard case .text(let uti) = row["uti"] else { return nil }
             if case .blob(let data) = row["data"] { return Representation(uti: uti, data: data) }
-            if case .text(let path) = row["blob_path"],
-               let data = try? Data(contentsOf: directory.appending(path: path)) {
-                return Representation(uti: uti, data: data)
+            if case .text(let path) = row["blob_path"] {
+                return Representation(uti: uti, data: try Data(contentsOf: directory.appending(path: path)))
             }
             return nil
         }

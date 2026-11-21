@@ -4,7 +4,8 @@ import CryptoKit
 @testable import ClipdeckCore
 
 @Test func insertThenReadBack() throws {
-    let (store, _) = try makeTempStore()
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let result = try store.insert(textClip("안녕", app: "com.apple.Notes"))
     guard case .inserted(let id) = result else { Issue.record("inserted 아님"); return }
     let item = try #require(try store.item(id: id))
@@ -16,7 +17,8 @@ import CryptoKit
 }
 
 @Test func duplicateHashBumps() throws {
-    let (store, _) = try makeTempStore()
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let t0 = Date(timeIntervalSince1970: 1_000)
     let t1 = Date(timeIntervalSince1970: 2_000)
     guard case .inserted(let id) = try store.insert(textClip("a"), now: t0) else { Issue.record("inserted 아님"); return }
@@ -39,6 +41,7 @@ private func sha256Hex(_ data: Data) -> String {
 
 @Test func largeRepresentationGoesToBlob() throws {
     let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let data = Data((0..<10_000_000).map { UInt8(truncatingIfNeeded: $0 &* 31) })
     guard case .inserted(let id) = try store.insert(blobClip(data)) else { Issue.record("inserted 아님"); return }
     let rows = try store.db.query("SELECT data, blob_path FROM item_representations WHERE item_id = ?", [.int(id)])
@@ -49,6 +52,7 @@ private func sha256Hex(_ data: Data) -> String {
 
 @Test func smallRepresentationStaysInline() throws {
     let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     _ = try store.insert(textClip("작은 것"))
     let blobs = dir.appending(path: "blobs").path
     let files = (try? FileManager.default.contentsOfDirectory(atPath: blobs)) ?? []
@@ -56,7 +60,8 @@ private func sha256Hex(_ data: Data) -> String {
 }
 
 @Test func eraseHistoryKeepsPinboardItems() throws {
-    let (store, _) = try makeTempStore()
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     guard case .inserted(let keep) = try store.insert(textClip("keep")),
           case .inserted(let drop) = try store.insert(textClip("drop")) else { Issue.record("inserted 아님"); return }
     try store.db.execute("INSERT INTO pinboards(id, name, sort) VALUES (1, 'p', 0)")
@@ -68,6 +73,7 @@ private func sha256Hex(_ data: Data) -> String {
 
 @Test func deleteRemovesBlob() throws {
     let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let data = Data(repeating: 7, count: 100_000)
     guard case .inserted(let id) = try store.insert(blobClip(data)) else { Issue.record("inserted 아님"); return }
     let file = dir.appending(path: "blobs/" + sha256Hex(data))
@@ -79,6 +85,7 @@ private func sha256Hex(_ data: Data) -> String {
 
 @Test func sharedBlobSurvivesUntilLastReference() throws {
     let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let data = Data(repeating: 9, count: 100_000)
     var a = blobClip(data); a.contentHash = "a"
     var b = blobClip(data); b.contentHash = "b"
@@ -91,7 +98,8 @@ private func sha256Hex(_ data: Data) -> String {
 }
 
 @Test func hideFromMCPMarksExistingItems() throws {
-    let (store, _) = try makeTempStore()
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     guard case .inserted(let a) = try store.insert(textClip("1", app: "x.app")),
           case .inserted(let b) = try store.insert(textClip("2", app: "x.app")),
           case .inserted(let c) = try store.insert(textClip("3", app: "y.app")) else { Issue.record("inserted 아님"); return }
@@ -104,7 +112,8 @@ private func sha256Hex(_ data: Data) -> String {
 }
 
 @Test func markUsedUpdatesCounters() throws {
-    let (store, _) = try makeTempStore()
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     guard case .inserted(let id) = try store.insert(textClip("u"), now: Date(timeIntervalSince1970: 1)) else { Issue.record("inserted 아님"); return }
     try store.markUsed(id: id, now: Date(timeIntervalSince1970: 5))
     let item = try #require(try store.item(id: id))
@@ -114,9 +123,40 @@ private func sha256Hex(_ data: Data) -> String {
 
 @Test func concurrentReaderDoesNotLock() async throws {
     let (writer, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
     let reader = try ClipStore(directory: dir)
     let w = Task.detached { for i in 0..<200 { _ = try writer.insert(textClip("w\(i)")) } }
     let r = Task.detached { for _ in 0..<200 { _ = try reader.item(id: 1) } }
     try await w.value
     try await r.value
+}
+
+@Test func bumpNeverUnhides() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    guard case .inserted(let a) = try store.insert(textClip("a")) else { Issue.record("inserted 아님"); return }
+    #expect(try store.insert(textClip("a", hidden: true)) == .bumped(a))
+    #expect(try store.item(id: a)?.mcpHidden == true)
+    guard case .inserted(let b) = try store.insert(textClip("b", hidden: true)) else { Issue.record("inserted 아님"); return }
+    #expect(try store.insert(textClip("b")) == .bumped(b))
+    #expect(try store.item(id: b)?.mcpHidden == true)
+}
+
+@Test func missingBlobThrows() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let data = Data(repeating: 3, count: 100_000)
+    guard case .inserted(let id) = try store.insert(blobClip(data)) else { Issue.record("inserted 아님"); return }
+    try FileManager.default.removeItem(at: dir.appending(path: "blobs/" + sha256Hex(data)))
+    #expect(throws: (any Error).self) { try store.representations(itemID: id) }
+}
+
+@Test func blobThresholdBoundary() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    var inline = blobClip(Data(repeating: 1, count: 65_536)); inline.contentHash = "inline"
+    var big = blobClip(Data(repeating: 2, count: 65_537)); big.contentHash = "big"
+    guard case .inserted(let a) = try store.insert(inline), case .inserted(let b) = try store.insert(big) else { Issue.record("inserted 아님"); return }
+    #expect(try store.db.query("SELECT blob_path FROM item_representations WHERE item_id = ?", [.int(a)]).first?["blob_path"] == .null)
+    #expect(try store.db.query("SELECT blob_path FROM item_representations WHERE item_id = ?", [.int(b)]).first?["blob_path"] != .null)
 }
