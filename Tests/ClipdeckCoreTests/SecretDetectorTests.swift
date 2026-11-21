@@ -32,11 +32,12 @@ private let detectCases: [(name: String, text: String)] = [
     ("secret-mixed", "secret: Xk3pQ9rT2mL8"),
     ("sentence-period", "키는 aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY."),
     ("bearer-period", "Bearer aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY."),
-    ("base64-slash", "Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2N"),
-    ("aws-secret", "aws_secret_access_key = Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2N"),
+    ("base64-slash", "Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2Nq7"),
+    ("aws-secret", "aws_secret_access_key = Qm7/Xz2+Lr9Tn4Vb8" + "Kp1Hs6Wd3/Yc5Jf0+Ga2Nq7"),
     ("aws-short", "aws_secret_access_key = abcdefgh12345678"),
     ("kv-suffix", "client_secret_key: abcdefgh1234"),
     ("kv-v2", "auth_token_v2=abcdefgh1234"),
+    ("secret-generic", "token: Secret<abc123xyz>"),
     ("kv-json", "{\"access_token\": \"abc123def456\"}"),
     ("high-entropy", "aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY"),
     ("embedded-in-doc", "회의록\n내용 정리\n배포 키는 " + "gh" + "p_" + body36 + " 입니다\n끝"),
@@ -112,6 +113,16 @@ private let safeCases: [(name: String, text: String)] = [
         print("detection rate base62x32 = \(hit62)/500, base64x40 = \(hit64)/500")
         #expect(hit62 >= 475)
         #expect(hit64 >= 475)
+    }
+
+    @Test(.serialized, arguments: ["token", "password", "token_", "apikey"])
+    func keywordRepeatFinishesFast(_ unit: String) {
+        let text = String(repeating: unit, count: 65_536 / unit.count)
+        let start = Date()
+        _ = SecretDetector.isSecret(text)
+        let elapsed = Date().timeIntervalSince(start)
+        print("keywordRepeat \(unit): \(elapsed)s")
+        #expect(elapsed < 2)
     }
 
     @Test func largeTextFinishesFast() {

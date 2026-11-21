@@ -24,7 +24,7 @@ public enum SecretDetector {
 
     // 키-값 형태. 값은 따옴표를 뺀 본문(3번째 캡처)만 판정에 쓴다.
     nonisolated(unsafe) private static let keyValue = try! Regex(
-        #"(?i)(?:password|passwd|secret|token|api[_-]?key)[A-Za-z0-9_-]*["']?[ \t]*([:=])[ \t]*(["']?)([^\s"']{6,})"#)
+        #"(?i)(?:password|passwd|secret|token|api[_-]?key)[A-Za-z0-9_-]{0,32}["']?[ \t]*([:=])[ \t]*(["']?)([^\s"']{6,})"#)
 
     nonisolated(unsafe) private static let uuid = try! Regex(
         #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#)
@@ -56,7 +56,7 @@ public enum SecretDetector {
     ]
 
     nonisolated(unsafe) private static let sizedNumeric = try! Regex(#"(?:U?Int|Float)(?:8|16|32|64)"#)
-    nonisolated(unsafe) private static let genericType = try! Regex(#"[A-Z][A-Za-z]*<.*>"#)
+    nonisolated(unsafe) private static let genericType = try! Regex(#"[A-Z][A-Za-z]*<([A-Za-z0-9_, ?\[\]<>.]*)>"#)
 
     /// 뒤의 `; , ? !`를 뗀 값이 타입 이름인가: 대문자로 시작하는 영문자만(String, Data, Token),
     /// `Int64`·`UInt8`·`Float32` 꼴, `Optional<String>` 꼴, 또는 소문자 타입 키워드.
@@ -65,7 +65,12 @@ public enum SecretDetector {
         let v = String(value.reversed().drop { ";,?!".contains($0) }.reversed())
         guard let first = v.first else { return false }
         if typeKeywords.contains(v) { return true }
-        if v.wholeMatch(of: sizedNumeric) != nil || v.wholeMatch(of: genericType) != nil { return true }
+        if v.wholeMatch(of: sizedNumeric) != nil { return true }
+        // `Optional<String>`은 타입, `Secret<abc123xyz>`처럼 안쪽에 숫자 섞인 소문자 시작 토큰이 있으면 값이다
+        if let m = v.wholeMatch(of: genericType), let inner = m.output[1].substring {
+            let parts = inner.split { !($0.isLetter || $0.isNumber || $0 == "_") }
+            return !parts.contains { $0.first?.isLowercase == true && $0.contains(where: \.isNumber) }
+        }
         return first.isUppercase && v.allSatisfy { $0.isASCII && $0.isLetter }
     }
 
