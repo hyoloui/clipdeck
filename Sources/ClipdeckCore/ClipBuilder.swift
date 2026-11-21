@@ -46,7 +46,8 @@ public enum ClipBuilder {
         }
 
         let hash = SHA256.hash(data: hashSource).map { String(format: "%02x", $0) }.joined()
-        let hidden = sourceAppBundleID.map { policy.mcpHiddenBundleIDs.contains($0) } ?? false
+        let hiddenApp = sourceAppBundleID.map { policy.mcpHiddenBundleIDs.contains($0) } ?? false
+        let hidden = hiddenApp || (policy.detectSecrets && plainText.map(SecretDetector.isSecret) == true)
         return NewClip(kind: kind, preview: preview, plainText: plainText, contentHash: hash,
                        sourceAppBundleID: sourceAppBundleID, sourceAppName: sourceAppName,
                        mcpHidden: hidden, representations: representations)
