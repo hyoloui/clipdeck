@@ -210,3 +210,18 @@ private func sha256Hex(_ data: Data) -> String {
         Issue.record("1시간 뒤에는 다시 성공해야 한다"); return
     }
 }
+
+/// 미리보기용으로 표현 하나만 읽는다(blob 포함)
+@Test func readsSingleRepresentationByUTI() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let big = Data(repeating: 7, count: 100_000) // blob 파일로 빠지는 크기
+    let clip = NewClip(kind: .image, preview: "img", plainText: nil, contentHash: "two-reps",
+                       sourceAppBundleID: nil, sourceAppName: nil, mcpHidden: false,
+                       representations: [Representation(uti: "public.tiff", data: Data([1, 2])),
+                                         Representation(uti: "public.png", data: big)])
+    guard case .inserted(let id) = try store.insert(clip) else { Issue.record("inserted 아님"); return }
+    #expect(try store.representation(itemID: id, uti: "public.png")?.data == big)
+    #expect(try store.representation(itemID: id, uti: "public.tiff")?.data == Data([1, 2]))
+    #expect(try store.representation(itemID: id, uti: "public.rtf") == nil)
+}

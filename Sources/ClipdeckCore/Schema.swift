@@ -4,9 +4,13 @@ public enum Schema {
     public static let version: Int32 = 2
 
     /// user_version이 현재 버전보다 낮을 때만 테이블을 만든다.
+    /// 항목 인덱스는 버전과 무관하게 매번 보장한다(인덱스 없이 v2로 올라간 DB 대비, 이미 있으면 아무 일도 하지 않는다).
     public static func migrate(_ db: Database) throws {
         let current = try db.query("PRAGMA user_version").first?["user_version"]
-        if case .int(let v) = current, v >= Int64(version) { return }
+        if case .int(let v) = current, v >= Int64(version) {
+            for sql in itemIndexes { try db.execute(sql) }
+            return
+        }
         try db.transaction {
             for sql in statements { try db.execute(sql) }
             // v2: 항목 id 카운터. 이미 있으면(재실행) 건드리지 않는다.
@@ -15,7 +19,15 @@ public enum Schema {
         }
     }
 
-    private static let statements = [
+    /// 목록(최근 사용 순)과 출처 앱 목록·필터용 인덱스. v2 마이그레이션에도 들어 있다.
+    private static let itemIndexes = [
+        "CREATE INDEX IF NOT EXISTS idx_items_last_used ON items(last_used_at DESC)",
+        "CREATE INDEX IF NOT EXISTS idx_items_source_app ON items(source_app_bundle_id, last_used_at DESC)",
+    ]
+
+    private static let statements = tables + itemIndexes
+
+    private static let tables = [
         "CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value INTEGER)",
         """
         CREATE TABLE IF NOT EXISTS items(

@@ -26,6 +26,7 @@ final class PanelController: NSObject {
     let settings: SettingsStore
     let model: PanelModel
     let presence = PanelPresence()
+    let previewLoader: PreviewLoader
     var panel: ClipPanel?
     var hosting: NSHostingView<PanelView>?
     var keyMonitor: Any?
@@ -46,7 +47,14 @@ final class PanelController: NSObject {
         self.store = store
         self.settings = settings
         self.model = PanelModel(store: store)
+        self.previewLoader = PreviewLoader(store: store)
         super.init()
+    }
+
+    /// 앱 실행 시 패널을 미리 만들어 첫 단축키에서 만드는 시간을 없앤다
+    func prepare() {
+        if panel == nil { _ = makePanel() }
+        applySettings(settings.load())
     }
 
     /// 시트가 떠 있는 동안에는 무시한다(시트가 붙은 채 닫히는 것 방지)
@@ -64,7 +72,6 @@ final class PanelController: NSObject {
         applySettings(settings.load())
 
         model.resetForShow()
-        presence.apps = model.sourceApps()
         presence.revealedItemID = nil
         presence.generation += 1
         position(panel)
@@ -81,6 +88,11 @@ final class PanelController: NSObject {
         NSAnimationContext.runAnimationGroup { ctx in
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
+        }
+        // 앱 필터 목록은 표시 경로에서 빼고, 패널을 띄운 다음 런루프에서 읽는다
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isOpen else { return }
+            self.presence.apps = self.model.sourceApps()
         }
     }
 
@@ -124,6 +136,7 @@ final class PanelController: NSObject {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) { presence.shown = false }
         panel?.orderOut(nil)
+        previewLoader.clear()
     }
 
     // MARK: 생성
@@ -150,7 +163,7 @@ final class PanelController: NSObject {
         effect.state = .active
         panel.contentView = effect
 
-        let root = PanelView(model: model, presence: presence, loader: PreviewLoader(store: store),
+        let root = PanelView(model: model, presence: presence, loader: previewLoader,
                              onActivate: { [weak self] item in self?.paste(item, plainText: false) },
                              onNewBoard: { [weak self] in self?.promptNewBoard(for: nil) })
         let host = NSHostingView(rootView: root)

@@ -59,10 +59,16 @@ struct SearchField: NSViewRepresentable {
     }
 }
 
+/// 미리보기를 다시 읽을 계기: 보여줄 항목이 바뀌거나 패널을 새로 열었을 때(닫을 때 미리보기를 비우므로)
+private struct PreviewTarget: Equatable {
+    let itemID: Int64?
+    let generation: Int
+}
+
 struct PanelView: View {
     @ObservedObject var model: PanelModel
     @ObservedObject var presence: PanelPresence
-    let loader: PreviewLoader
+    @ObservedObject var loader: PreviewLoader
     let onActivate: (ClipItem) -> Void
     let onNewBoard: () -> Void
 
@@ -75,8 +81,7 @@ struct PanelView: View {
             HStack(spacing: 0) {
                 list.frame(width: Layout.listWidth)
                 Divider()
-                PreviewView(item: model.selectedItem, loader: loader,
-                            isRevealed: model.selectedItem.map { $0.id == presence.revealedItemID } ?? false,
+                PreviewView(item: model.selectedItem, loaded: loader.loaded, isRevealed: isRevealed,
                             onReveal: { presence.revealedItemID = model.selectedItem?.id })
             }
             Divider()
@@ -87,11 +92,25 @@ struct PanelView: View {
         .ignoresSafeArea()
         .coordinateSpace(name: "panel")
         .onPreferenceChange(SelectedRowFrameKey.self) { presence.selectedRowFrame = $0 }
+        // 미리보기는 body에서 읽지 않고, 보여줄 항목이 바뀔 때 한 번 읽어 둔다
+        .onChange(of: PreviewTarget(itemID: previewItem?.id, generation: presence.generation), initial: true) { _, _ in
+            loader.show(previewItem)
+        }
         // 등장: 스프링(끊고 되돌릴 수 있음). 동작 줄이기면 크기 변화 없이 페이드만.
         .scaleEffect(reduceMotion || presence.shown ? 1 : 0.97)
         .opacity(presence.shown ? 1 : 0)
         .animation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.3, dampingFraction: 0.85),
                    value: presence.shown)
+    }
+
+    private var isRevealed: Bool {
+        model.selectedItem.map { $0.id == presence.revealedItemID } ?? false
+    }
+
+    /// 내용을 읽어 보여줄 항목. 가려진 항목은 "보기" 전에는 읽지 않는다.
+    private var previewItem: ClipItem? {
+        guard let item = model.selectedItem, !item.mcpHidden || isRevealed else { return nil }
+        return item
     }
 
     private var header: some View {

@@ -128,14 +128,22 @@ public final class ClipStore: @unchecked Sendable {
 
     public func representations(itemID: Int64) throws -> [Representation] {
         try db.query("SELECT uti, data, blob_path FROM item_representations WHERE item_id = ? ORDER BY rowid",
-                     [.int(itemID)]).compactMap { row -> Representation? in
-            guard case .text(let uti) = row["uti"] else { return nil }
-            if case .blob(let data) = row["data"] { return Representation(uti: uti, data: data) }
-            if case .text(let path) = row["blob_path"] {
-                return Representation(uti: uti, data: try Data(contentsOf: directory.appending(path: path)))
-            }
-            return nil
+                     [.int(itemID)]).compactMap(representation(from:))
+    }
+
+    /// 표현 하나만 읽는다(미리보기처럼 나머지 표현·blob을 읽을 필요가 없을 때). 없으면 nil.
+    public func representation(itemID: Int64, uti: String) throws -> Representation? {
+        try db.query("SELECT uti, data, blob_path FROM item_representations WHERE item_id = ? AND uti = ? ORDER BY rowid LIMIT 1",
+                     [.int(itemID), .text(uti)]).first.flatMap(representation(from:))
+    }
+
+    private func representation(from row: [String: SQLValue]) throws -> Representation? {
+        guard case .text(let uti) = row["uti"] else { return nil }
+        if case .blob(let data) = row["data"] { return Representation(uti: uti, data: data) }
+        if case .text(let path) = row["blob_path"] {
+            return Representation(uti: uti, data: try Data(contentsOf: directory.appending(path: path)))
         }
+        return nil
     }
 
     public func plainText(itemID: Int64) throws -> String? {

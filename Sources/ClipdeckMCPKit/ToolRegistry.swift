@@ -234,11 +234,7 @@ public final class ToolRegistry {
               let h = props[kCGImagePropertyPixelHeight] as? Int else { return nil }
         let image: CGImage?
         if max(w, h) > maxImagePixels {
-            image = CGImageSourceCreateThumbnailAtIndex(src, 0, [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: maxImagePixels,
-            ] as CFDictionary)
+            image = ImageThumbnail.make(data: data, maxPixel: maxImagePixels)
         } else {
             image = CGImageSourceCreateImageAtIndex(src, 0, nil)
         }

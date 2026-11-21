@@ -51,6 +51,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let settingsWindow = SettingsWindowController(model: model)
         self.settingsWindow = settingsWindow
         panel.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }
+        panel.prepare()
 
         statusItem = StatusItemController(store: store, settings: settings)
         statusItem?.onOpen = { [weak panel] in panel?.toggle() }

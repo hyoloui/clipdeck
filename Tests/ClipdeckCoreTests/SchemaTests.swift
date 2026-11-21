@@ -99,3 +99,48 @@ private let v1Statements = [
     try db.execute("DELETE FROM items WHERE id = 3")
     #expect(try db.query("SELECT rowid FROM items_fts WHERE items_fts MATCH 'gamma'").isEmpty)
 }
+
+private func indexNames(_ db: Database) throws -> Set<String> {
+    Set(try db.query("SELECT name FROM sqlite_master WHERE type = 'index'").compactMap {
+        if case .text(let s) = $0["name"] { s } else { nil }
+    })
+}
+
+private let itemIndexes: Set<String> = ["idx_items_last_used", "idx_items_source_app"]
+
+@Test func migrateCreatesItemIndexes() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let db = try Database(path: dir.appending(path: "t.sqlite").path)
+    try Schema.migrate(db)
+    #expect(try indexNames(db).isSuperset(of: itemIndexes))
+}
+
+@Test func migrateV1AddsItemIndexes() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let db = try Database(path: dir.appending(path: "t.sqlite").path)
+    for sql in v1Statements { try db.execute(sql) }
+    try db.execute("PRAGMA user_version = 1")
+    #expect(try indexNames(db).isDisjoint(with: itemIndexes))
+    try Schema.migrate(db)
+    #expect(try indexNames(db).isSuperset(of: itemIndexes))
+}
+
+/// 인덱스 없이 이미 v2로 올라간 DB(개발 중 임시 DB)도 migrate에서 인덱스를 갖춘다
+@Test func migrateV2WithoutIndexesAddsThem() throws {
+    let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+    defer { try? FileManager.default.removeItem(at: dir) }
+    let db = try Database(path: dir.appending(path: "t.sqlite").path)
+    for sql in v1Statements { try db.execute(sql) }
+    try db.execute("CREATE TABLE IF NOT EXISTS meta(key TEXT PRIMARY KEY, value INTEGER)")
+    try db.execute("INSERT INTO meta(key, value) VALUES ('next_item_id', 1)")
+    try db.execute("PRAGMA user_version = 2")
+    #expect(try indexNames(db).isDisjoint(with: itemIndexes))
+    try Schema.migrate(db)
+    #expect(try indexNames(db).isSuperset(of: itemIndexes))
+    #expect(try db.query("PRAGMA user_version").first?["user_version"] == .int(2))
+}

@@ -8,23 +8,38 @@ enum PreviewContent {
     case files([String])
     case color(NSColor?, hex: String)
     case empty
+    /// 아직 읽지 않음(선택이 막 바뀐 직후 한 순간)
+    case pending
 }
 
-/// 선택 항목의 미리보기 내용을 읽는다. 마지막 한 건만 기억해 화면 갱신 때 다시 읽지 않는다.
+/// 선택 항목의 미리보기 내용. 보여줄 항목이 바뀔 때 한 번 읽어 보관하고, 화면(`body`)은 보관한 값만 그린다.
 @MainActor
-final class PreviewLoader {
+final class PreviewLoader: ObservableObject {
     static let textLimit = 2000
+    /// 미리보기 이미지 긴 변의 상한(pt). 실제 픽셀 수는 화면 배율을 곱한다.
+    static let imageMaxPoints: CGFloat = 800
+
+    struct Loaded {
+        let id: Int64
+        let content: PreviewContent
+        let bytes: Int
+    }
+
+    @Published private(set) var loaded: Loaded?
     private let store: ClipStore
-    private var cached: (id: Int64, content: PreviewContent, bytes: Int)?
 
     init(store: ClipStore) { self.store = store }
 
-    func load(_ item: ClipItem) -> (content: PreviewContent, bytes: Int) {
-        if let c = cached, c.id == item.id { return (c.content, c.bytes) }
+    /// 보여줄 항목이 바뀌었을 때 부른다. 가려진 항목(보기 전)은 nil을 넘겨 내용을 읽지 않는다.
+    func show(_ item: ClipItem?) {
+        guard let item else { loaded = nil; return }
+        if loaded?.id == item.id { return }
         let result = read(item)
-        cached = (item.id, result.content, result.bytes)
-        return result
+        loaded = Loaded(id: item.id, content: result.content, bytes: result.bytes)
     }
+
+    /// 패널을 닫을 때 보관한 미리보기(큰 이미지 포함)를 놓는다
+    func clear() { loaded = nil }
 
     private func read(_ item: ClipItem) -> (content: PreviewContent, bytes: Int) {
         switch item.kind {
@@ -35,9 +50,14 @@ final class PreviewLoader {
             let mono = item.kind == .text && Self.looksLikeCode(head)
             return (.text(head, monospaced: mono), full.utf8.count)
         case .image:
-            let reps = (try? store.representations(itemID: item.id)) ?? []
-            let rep = reps.first { $0.uti == "public.png" } ?? reps.first { $0.uti == "public.tiff" }
-            guard let rep, let image = NSImage(data: rep.data) else { return (.empty, 0) }
+            // png 또는 tiff 표현 하나만 읽고, 미리보기 영역에 맞춘 축소본만 보관한다
+            let rep = (try? store.representation(itemID: item.id, uti: PasteboardTypes.png))
+                ?? (try? store.representation(itemID: item.id, uti: PasteboardTypes.tiff))
+            guard let rep else { return (.empty, 0) }
+            let scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
+            let side = min(max(Layout.panelWidth - Layout.listWidth, Layout.panelHeight), Self.imageMaxPoints)
+            guard let cg = ImageThumbnail.make(data: rep.data, maxPixel: Int(side * scale)) else { return (.empty, 0) }
+            let image = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / scale, height: CGFloat(cg.height) / scale))
             return (.image(image), rep.data.count)
         case .file:
             let names = ((try? store.plainText(itemID: item.id)) ?? item.preview)
@@ -58,7 +78,8 @@ final class PreviewLoader {
 
 struct PreviewView: View {
     let item: ClipItem?
-    let loader: PreviewLoader
+    /// 선택이 바뀔 때 미리 읽어 둔 내용. 아직 이 항목 것이 아니면 내용 칸을 비워 둔다.
+    let loaded: PreviewLoader.Loaded?
     let isRevealed: Bool
     let onReveal: () -> Void
 
@@ -100,8 +121,7 @@ struct PreviewView: View {
 
     @ViewBuilder
     private func content(for item: ClipItem) -> some View {
-        let loaded = loader.load(item)
-        switch loaded.content {
+        switch loaded.flatMap({ $0.id == item.id ? $0.content : nil }) ?? .pending {
         case .text(let text, let mono):
             ScrollView {
                 Text(text)
@@ -141,11 +161,13 @@ struct PreviewView: View {
             .accessibilityLabel("색상 \(hex)")
         case .empty:
             Text("미리볼 수 없습니다").foregroundStyle(.secondary)
+        case .pending:
+            EmptyView()
         }
     }
 
     private func footer(for item: ClipItem) -> some View {
-        let bytes = (item.mcpHidden && !isRevealed) ? 0 : loader.load(item).bytes
+        let bytes = (item.mcpHidden && !isRevealed) ? 0 : (loaded?.id == item.id ? loaded?.bytes ?? 0 : 0)
         var parts: [String] = []
         if let app = item.sourceAppName { parts.append(app) }
         parts.append(RelativeTime.string(from: item.lastUsedAt))
