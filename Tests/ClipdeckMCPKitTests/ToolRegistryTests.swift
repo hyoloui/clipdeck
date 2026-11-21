@@ -180,10 +180,12 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         let counter = ChangeCounter()
         let reg = makeRegistry(store, clipboard: clip, counter: counter)
         #expect(!reg.call(name: "copy_to_clipboard", arguments: ["id": n(id)]).isError)
-        #expect(clip.writes == [[Representation(uti: "public.utf8-plain-text", data: Data("copy me please".utf8))]])
+        #expect(clip.writes.first?.first == Representation(uti: "public.utf8-plain-text", data: Data("copy me please".utf8)))
+        #expect(clip.writes.first?.filter { $0.uti == PasteboardTypes.selfMarker }.count == 1)
         #expect(!reg.call(name: "copy_to_clipboard", arguments: ["text": .string("direct")]).isError)
-        #expect(clip.writes.last == [Representation(uti: PasteboardTypes.plainText, data: Data("direct".utf8))])
-        #expect(counter.count == 2)
+        #expect(clip.writes.last?.first == Representation(uti: PasteboardTypes.plainText, data: Data("direct".utf8)))
+        #expect(clip.writes.last?.filter { $0.uti == PasteboardTypes.selfMarker }.count == 1)
+        #expect(counter.count == 1) // id 복사만 알린다
         #expect(reg.call(name: "copy_to_clipboard", arguments: [:]).isError)
         #expect(reg.call(name: "copy_to_clipboard", arguments: ["id": n(id), "text": .string("x")]).isError)
         #expect(reg.call(name: "copy_to_clipboard", arguments: ["text": .string("")]).isError)
@@ -303,14 +305,14 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         #expect(shapes[0] == "false|1|true")
     }
 
-    @Test func createTextTwiceBumpsOnlyOwnRow() throws {
+    @Test func createTextTwiceMakesTwoRows() throws {
         let (store, dir) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
         let reg = makeRegistry(store)
         let a = reg.call(name: "create_text_item", arguments: ["text": .string("same text here")])
         let b = reg.call(name: "create_text_item", arguments: ["text": .string("same text here")])
-        #expect(text(a) == text(b))
-        #expect(try store.search(SearchQuery()).count == 1)
+        #expect(!a.isError && !b.isError && text(a) != text(b))
+        #expect(try store.search(SearchQuery()).count == 2)
     }
 
     @Test func secretWithPinboardSaysNotAdded() throws {
@@ -335,5 +337,51 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         #expect(search.description.contains("생략"))
         #expect(!reg.call(name: "search_items", arguments: [:]).isError)
         #expect(text(reg.call(name: "list_recent", arguments: [:])).contains("\"app_bundle_id\":\"com.example.app\""))
+    }
+
+    @Test func createTextNeverTouchesExistingRows() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let board = try store.createPinboard(name: "b", color: nil)
+        let reg = makeRegistry(store)
+        let note = "meeting notes for tuesday"
+        let first = reg.call(name: "create_text_item", arguments: ["text": .string(note)])
+        let a = try #require(ids(ToolResult(content: [.text("[" + text(first) + "]")])).first)
+        try store.setMCPHidden(id: a, true)
+        let before = try store.item(id: a)
+        let second = reg.call(name: "create_text_item", arguments: ["text": .string(note), "pinboard": .string("b")])
+        let newID = try #require(ids(ToolResult(content: [.text("[" + text(second) + "]")])).first)
+        #expect(newID != a)
+        #expect(!reg.call(name: "get_item", arguments: ["id": n(newID)]).isError)
+        let after = try store.item(id: a)
+        #expect(after?.lastUsedAt == before?.lastUsedAt && after?.useCount == before?.useCount)
+        #expect(ids(reg.call(name: "list_pinboard_items", arguments: ["pinboard": n(board)])) == [newID])
+        let raw = try store.search(SearchQuery(pinboardID: board))
+        #expect(raw.map(\.id) == [newID])
+        let desc = try #require(reg.definitions.first { $0.name == "create_text_item" }).description
+        #expect(desc.contains("하나 더"))
+    }
+
+    @Test func copyByIdMarksUsed() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let id = try insertText(store, "used by copy")
+        let before = try #require(try store.item(id: id)).useCount
+        let reg = makeRegistry(store)
+        #expect(!reg.call(name: "copy_to_clipboard", arguments: ["id": n(id)]).isError)
+        #expect(try store.item(id: id)?.useCount == before + 1)
+    }
+
+    @Test func copyByTextLeavesNoRow() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try insertText(store, "existing")
+        let counter = ChangeCounter()
+        let reg = makeRegistry(store, counter: counter)
+        #expect(!reg.call(name: "copy_to_clipboard", arguments: ["text": .string("brand new text")]).isError)
+        #expect(try store.search(SearchQuery()).count == 1)
+        #expect(counter.count == 0)
+        let desc = try #require(reg.definitions.first { $0.name == "copy_to_clipboard" }).description
+        #expect(desc.contains("create_text_item"))
     }
 }

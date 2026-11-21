@@ -47,6 +47,12 @@ extension ClipStore {
         return nil
     }
 
+    /// 보이는 항목의 사용 기록만 갱신한다(숨김·없는 항목이면 아무것도 하지 않는다).
+    public func mcpMarkUsed(id: Int64) throws {
+        guard try mcpItem(id: id) != nil else { return }
+        try markUsed(id: id)
+    }
+
     public enum MCPCreateResult: Equatable, Sendable {
         case created(id: Int64)
         /// 탐지기가 비밀값으로 판정해 저장은 했지만 MCP에서는 숨겼다.
@@ -54,15 +60,15 @@ extension ClipStore {
         case rejected
     }
 
-    /// MCP가 만든 텍스트 항목을 저장한다. 캡처된 항목과 hash 공간을 분리해(`SHA256("mcp\0" + 텍스트)`)
-    /// 캡처된 행(숨김 포함)을 절대 건드리지 않는다. 응답은 호출자 텍스트의 탐지기 판정으로만 정해지므로,
+    /// MCP가 만든 텍스트 항목을 저장한다. 호출마다 새 행을 만들고(hash에 UUID를 섞어 중복 제거를 하지 않는다),
+    /// 캡처된 행도 이전에 MCP가 만든 행도(사용자가 숨겼을 수 있다) 절대 건드리지 않는다. 응답은 호출자 텍스트의 탐지기 판정으로만 정해지므로,
     /// 저장소에 같은 내용의 숨김 항목이 있는지 알아낼 수 없다.
     public func mcpCreateText(_ text: String) throws -> MCPCreateResult {
         guard var clip = ClipBuilder.make(
             representations: [Representation(uti: PasteboardTypes.plainText, data: Data(text.utf8))],
             sourceAppBundleID: "local.hyoloui.clipdeck.mcp", sourceAppName: "MCP",
             policy: CapturePolicy(detectSecrets: true)) else { return .rejected }
-        clip.contentHash = SHA256.hash(data: Data(("mcp\u{0}" + text).utf8)).map { String(format: "%02x", $0) }.joined()
+        clip.contentHash = SHA256.hash(data: Data(("mcp\u{0}" + UUID().uuidString + "\u{0}" + text).utf8)).map { String(format: "%02x", $0) }.joined()
         let id: Int64 = switch try insert(clip) {
         case .inserted(let id), .bumped(let id): id
         }

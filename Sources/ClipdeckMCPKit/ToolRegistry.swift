@@ -83,13 +83,13 @@ public final class ToolRegistry {
                 description: "한 Pinboard에 들어 있는 항목을 나열한다. / List the items in one pinboard.",
                 inputSchema: Self.schema([("pinboard", "integer|string", "Pinboard id 또는 이름 / pinboard id or name")] + listProps, required: ["pinboard"])),
             ToolDefinition(name: "copy_to_clipboard",
-                description: "기존 항목(id) 또는 텍스트를 시스템 클립보드에 복사한다. 사용자가 ⌘V로 붙여넣는다. id와 text 중 하나만 준다. / Copy an existing item (id) or a text to the system clipboard; the user then pastes with Cmd+V. Give exactly one of id or text.",
+                description: "기존 항목(id) 또는 텍스트를 시스템 클립보드에 복사한다. 사용자가 ⌘V로 붙여넣는다. id와 text 중 하나만 준다. text로 복사한 내용은 기록에 남지 않는다(남기려면 create_text_item). / Copy an existing item (id) or a text to the system clipboard; the user then pastes with Cmd+V. Give exactly one of id or text. A copied text is not saved to history (use create_text_item to keep it).",
                 inputSchema: Self.schema([
                     ("id", "integer", "복사할 항목 id / item id to copy"),
                     ("text", "string", "직접 복사할 텍스트(최대 100KB) / text to copy (max 100KB)"),
                 ], required: [])),
             ToolDefinition(name: "create_text_item",
-                description: "텍스트를 새 클립보드 항목으로 저장한다. 비밀값으로 보이면 MCP에서 숨겨진다. / Save a text as a new clipboard item. Text that looks like a secret is hidden from MCP.",
+                description: "텍스트를 새 클립보드 항목으로 저장한다. 비밀값으로 보이면 MCP에서 숨겨진다. 같은 텍스트로 다시 호출하면 항목이 하나 더 생긴다. / Save a text as a new clipboard item. Text that looks like a secret is hidden from MCP. Calling again with the same text creates one more item.",
                 inputSchema: Self.schema([
                     ("text", "string", "저장할 텍스트(최대 100KB) / text to save (max 100KB)"),
                     ("pinboard", "integer|string", "넣을 Pinboard id 또는 이름(없는 보드는 만들지 않음) / pinboard to add to (never created)"),
@@ -267,8 +267,12 @@ public final class ToolRegistry {
         default:
             throw ToolError("id와 text 중 하나만 지정해야 합니다 (give exactly one of id or text)")
         }
-        clipboard.write(reps)
-        notifyChange()
+        clipboard.write(ClipboardPayload.withSelfMarker(reps))
+        // id 복사만 사용 기록을 남기고 알린다. text 복사는 기록에 남지 않는다.
+        if let id {
+            try store.mcpMarkUsed(id: id)
+            notifyChange()
+        }
         return ToolResult(content: [.text("클립보드에 복사했습니다. 사용자가 ⌘V로 붙여넣을 수 있습니다. (copied to the clipboard)")])
     }
 
