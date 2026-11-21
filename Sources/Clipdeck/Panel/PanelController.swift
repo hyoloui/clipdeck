@@ -299,6 +299,8 @@ final class PanelController: NSObject {
 
     private func paste(_ item: ClipItem, plainText: Bool) {
         if let onPaste {
+            // 앞 앱으로 포커스를 돌려야 하므로 패널을 먼저 닫는다
+            hide(animated: false)
             onPaste(item.id, plainText)
         } else {
             fallbackCopy(item, plainText: plainText)
@@ -307,12 +309,12 @@ final class PanelController: NSObject {
     }
 
     private func copyOnly(_ item: ClipItem) {
+        hide(animated: false)
         if let onCopyOnly {
             onCopyOnly(item.id)
         } else {
             fallbackCopy(item, plainText: true)
         }
-        hide(animated: false)
     }
 
     /// PasteService가 연결되기 전의 임시 동작: 텍스트만 클립보드에 쓴다

@@ -11,6 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var monitor: PasteboardMonitor?
     private var statusItem: StatusItemController?
     private var panelController: PanelController?
+    private var pasteService: PasteService?
     private var hotKey: GlobalHotKey?
     private var purgeTimer: Timer?
 
@@ -27,6 +28,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
         let panel = PanelController(store: store, settings: settings)
         panelController = panel
+        let paste = PasteService(store: store, settings: settings.load())
+        pasteService = paste
+        panel.onWillShow = { paste.rememberFrontmostApp() }
+        panel.onPaste = { id, plain in paste.paste(itemID: id, plainText: plain) }
+        panel.onCopyOnly = { id in paste.copyOnly(itemID: id) }
         hotKey = GlobalHotKey(spec: settings.load().hotKey) { [weak panel] in panel?.toggle() }
 
         statusItem = StatusItemController(store: store, settings: settings)
