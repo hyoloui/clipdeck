@@ -59,10 +59,14 @@ extension ClipStore {
 
     /// 기록에 있는 출처 앱(최근 사용 순, 번들 ID별 한 줄). 앱 필터 메뉴용.
     public func sourceApps(limit: Int = 20) throws -> [(bundleID: String, name: String)] {
+        // 이름은 같은 번들 ID에서 가장 최근 항목의 것, 동률은 번들 ID 오름차순
         let rows = try db.query("""
-            SELECT source_app_bundle_id AS bid, MAX(source_app_name) AS name, MAX(last_used_at) AS used
-            FROM items WHERE source_app_bundle_id IS NOT NULL
-            GROUP BY source_app_bundle_id ORDER BY used DESC LIMIT ?
+            SELECT i.source_app_bundle_id AS bid, MAX(i.last_used_at) AS used,
+                   (SELECT i2.source_app_name FROM items i2
+                    WHERE i2.source_app_bundle_id = i.source_app_bundle_id
+                    ORDER BY i2.last_used_at DESC, i2.id DESC LIMIT 1) AS name
+            FROM items i WHERE i.source_app_bundle_id IS NOT NULL
+            GROUP BY i.source_app_bundle_id ORDER BY used DESC, bid ASC LIMIT ?
             """, [.int(Int64(max(limit, 0)))])
         return rows.compactMap { row in
             guard case .text(let bid) = row["bid"] else { return nil }

@@ -49,7 +49,11 @@ final class PanelController: NSObject {
         super.init()
     }
 
-    func toggle() { isOpen ? hide() : show() }
+    /// 시트가 떠 있는 동안에는 무시한다(시트가 붙은 채 닫히는 것 방지)
+    func toggle() {
+        if sheetOpen { return }
+        isOpen ? hide() : show()
+    }
 
     func show() {
         guard !isOpen else { return }
@@ -216,14 +220,21 @@ final class PanelController: NSObject {
 
     /// nil을 돌려주면 이벤트를 먹은 것이다
     private func handle(_ event: NSEvent) -> NSEvent? {
-        guard let panel, event.window === panel else { return event }
+        guard let panel else { return event }
         let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
+        // 보드 이름 시트(별도 창)의 입력란에도 편집 단축키를 적용한다
+        if let sheet = panel.attachedSheet, event.window === sheet {
+            return performEdit(event, flags, sheet.firstResponder as? NSTextView) ? nil : event
+        }
+        guard event.window === panel else { return event }
         let editor = panel.firstResponder as? NSTextView
         // 한글 등 조합 중: ↩·↑↓·Tab류는 조합을 확정하고 같은 입력으로 바로 처리하고, 나머지(Esc·⌫ 등)는 입력기에 넘긴다
         if let editor, editor.hasMarkedText() {
             let commitKeys: Set<UInt16> = [36, 76, 125, 126, 48, keys.plainText.keyCode, keys.nextBoard.keyCode, keys.previousBoard.keyCode]
             guard commitKeys.contains(event.keyCode) else { return event }
             editor.unmarkText()
+            // 입력기 쪽 조합 상태도 버려, 다음 자모에서 직전 음절이 중복 입력되지 않게 한다
+            editor.inputContext?.discardMarkedText()
         }
 
         if matches(keys.plainText, event, flags: flags), let item = model.selectedItem {
@@ -243,16 +254,13 @@ final class PanelController: NSObject {
         case (51, []): // ⌫: 검색어가 있으면 글자 삭제가 우선
             guard model.query.isEmpty else { return event }
             deleteSelected(); return nil
-        case (9, .command): return editAction(#selector(NSText.paste(_:)), editor, event)
-        case (0, .command): return editAction(#selector(NSText.selectAll(_:)), editor, event)
-        case (7, .command): return editAction(#selector(NSText.cut(_:)), editor, event)
-        case (6, .command): return editAction(Selector(("undo:")), editor, event)
-        case (6, [.command, .shift]): return editAction(Selector(("redo:")), editor, event)
+        case (9, .command), (0, .command), (7, .command), (6, .command), (6, [.command, .shift]):
+            return performEdit(event, flags, editor) ? nil : event
         case (35, .command): // ⌘P
             DispatchQueue.main.async { [weak self] in self?.showBoardMenu() }
             return nil
         case (8, .command): // ⌘C: 검색창에 선택한 글자가 있으면 그 복사가 우선
-            if let editor, editor.selectedRange().length > 0 { return event }
+            if let editor, editor.selectedRange().length > 0 { editor.copy(nil); return nil }
             if let item = model.selectedItem { copyOnly(item) }
             return nil
         case (4, .command): // ⌘H: 항목별 MCP 숨김 전환
@@ -271,11 +279,20 @@ final class PanelController: NSObject {
         }
     }
 
-    /// 검색창 편집 단축키(⌘V·⌘A·⌘X·⌘Z). 앱이 비활성이라 메뉴 단축키가 오지 않으므로 직접 보낸다.
-    private func editAction(_ action: Selector, _ editor: NSTextView?, _ event: NSEvent) -> NSEvent? {
-        guard editor != nil else { return event }
-        NSApp.sendAction(action, to: nil, from: nil)
-        return nil
+    /// 입력란 편집 단축키(⌘V·⌘A·⌘X·⌘C·⌘Z·⇧⌘Z). 앱이 비활성이라 메뉴 단축키가 오지 않으므로 직접 보낸다.
+    /// 처리했으면 true. 편집기가 없으면 false.
+    private func performEdit(_ event: NSEvent, _ flags: NSEvent.ModifierFlags, _ editor: NSTextView?) -> Bool {
+        guard let editor else { return false }
+        switch (event.keyCode, flags) {
+        case (9, .command): editor.paste(nil)
+        case (0, .command): editor.selectAll(nil)
+        case (7, .command): editor.cut(nil)
+        case (8, .command): editor.copy(nil)
+        case (6, .command): NSApp.sendAction(Selector(("undo:")), to: nil, from: nil)
+        case (6, [.command, .shift]): NSApp.sendAction(Selector(("redo:")), to: nil, from: nil)
+        default: return false
+        }
+        return true
     }
 
     // MARK: 동작
@@ -406,7 +423,7 @@ final class PanelController: NSObject {
                         if let itemID { self.addToBoard(itemID: itemID, boardID: id) } else { self.model.reload() }
                     } catch {
                         let message = (error as? PinboardError) == .duplicateName ? "같은 이름의 보드가 이미 있습니다."
-                            : (error as? PinboardError) == .emptyName ? "보드 이름을 입력하세요."
+                            : (error as? PinboardError) == .emptyName ? "보드 이름이 비어 있습니다."
                             : "보드를 만들지 못했습니다."
                         Self.log.error("보드 만들기 실패: \(String(describing: error), privacy: .public)")
                         // 시트는 닫히고 오류 문구와 함께 바로 다시 열린다(sheetOpen은 유지)
