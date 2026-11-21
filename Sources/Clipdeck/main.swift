@@ -1,1 +1,8 @@
-// 앱 진입점 자리표시: 지금은 아무 일도 하지 않는다.
+import AppKit
+
+// 메뉴바 전용 상주 앱: Dock 아이콘 없음
+let app = NSApplication.shared
+let delegate = AppDelegate()
+app.delegate = delegate
+app.setActivationPolicy(.accessory)
+app.run()
