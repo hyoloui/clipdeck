@@ -24,13 +24,15 @@ public enum ClipBuilder {
         }
 
         let preview: String
+        /// 검사 전 원문(검사는 이 원문의 앞 `ClipLimits.scanBytes`에 한다)
         let plainText: String?
         let hashSource: Data
 
         switch kind {
         case .text, .link:
             guard let plain else { return nil }
-            preview = textPreview(plain)
+            // 미리보기도 저장하는 잘린 텍스트에서만 만든다(공백을 건너뛰어 100KB 너머의 내용이 들어오지 않게)
+            preview = textPreview(ClipLimits.prefix(plain))
             plainText = plain
             hashSource = Data(plain.utf8)
         case .image:
@@ -55,10 +57,11 @@ public enum ClipBuilder {
         }
 
         let hash = SHA256.hash(data: hashSource).map { String(format: "%02x", $0) }.joined()
-        // MCP·FTS에 닿는 텍스트는 앞 100KB만 담는다(비밀값 검사 범위와 같다). 붙여넣기는 표현을 쓰므로 전문이 간다.
+        // MCP·FTS에 닿는 텍스트는 앞 100KB만 담는다. 붙여넣기는 표현을 쓰므로 전문이 간다.
+        // 비밀값 검사는 원문의 앞 `scanBytes`(저장 범위 + 4KB)에 해서, 저장 경계에 걸친 키도 전체가 검사된다.
         let storedText = plainText.map { ClipLimits.prefix($0) }
         let hiddenApp = recentBundleIDs.contains(where: policy.mcpHiddenBundleIDs.contains)
-        let hidden = hiddenApp || (policy.detectSecrets && storedText.map(SecretDetector.isSecret) == true)
+        let hidden = hiddenApp || (policy.detectSecrets && plainText.map(SecretDetector.isSecret) == true)
         return NewClip(kind: kind, preview: preview, plainText: storedText, contentHash: hash,
                        sourceAppBundleID: sourceAppBundleID, sourceAppName: sourceAppName,
                        mcpHidden: hidden, representations: representations)

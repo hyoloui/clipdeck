@@ -8,12 +8,14 @@ public enum PastePayload {
 
     /// 항상 `selfMarker`를 덧붙여 우리가 쓴 내용이 다시 캡처되지 않게 한다.
     /// `plainTextOnly`면 `public.utf8-plain-text`만 남긴다. 예외(원본 그대로): 파일 URL·색 표현이 있을 때,
-    /// 이미지 표현이 있고 일반 텍스트가 없을 때. 텍스트와 이미지가 함께 있으면(스프레드시트 셀) 텍스트만 남긴다.
+    /// 이미지 표현이 있고 일반 텍스트(공백뿐이 아닌)가 없을 때. 텍스트와 이미지가 함께 있으면(스프레드시트 셀) 텍스트만 남긴다.
     public static func build(_ reps: [Representation], plainTextOnly: Bool) -> [Representation] {
         var out = reps
         let text = reps.filter { $0.uti == PasteboardTypes.plainText }
         let hasImage = reps.contains { $0.uti == PasteboardTypes.png || $0.uti == PasteboardTypes.tiff }
-        let keep = reps.contains { keepOriginal.contains($0.uti) } || (hasImage && text.isEmpty)
+        // "일반 텍스트가 있다"는 분류(KindClassifier)와 같은 기준: 공백을 뺀 내용이 있는 텍스트
+        let hasText = KindClassifier.hasPlainText(text.first.flatMap { String(data: $0.data, encoding: .utf8) })
+        let keep = reps.contains { keepOriginal.contains($0.uti) } || (hasImage && !hasText)
         if plainTextOnly, !keep, !text.isEmpty { out = text }
         out.append(Representation(uti: PasteboardTypes.selfMarker, data: PasteboardTypes.selfMarkerData))
         return out

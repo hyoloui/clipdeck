@@ -119,7 +119,7 @@ private let safeCases: [(name: String, text: String)] = [
 
     @Test(.serialized, arguments: ["token", "password", "token_", "apikey"])
     func keywordRepeatFinishesFast(_ unit: String) {
-        let text = String(repeating: unit, count: ClipLimits.plainTextBytes / unit.count)
+        let text = String(repeating: unit, count: ClipLimits.scanBytes / unit.count)
         let start = Date()
         _ = SecretDetector.isSecret(text)
         let elapsed = Date().timeIntervalSince(start)
@@ -129,7 +129,7 @@ private let safeCases: [(name: String, text: String)] = [
 
     @Test(.serialized, arguments: ["-eyJ", "eyJ", "xeyJ."])
     func jwtPrefixRepeatFinishesFast(_ unit: String) {
-        let text = String(repeating: unit, count: ClipLimits.plainTextBytes / unit.count)
+        let text = String(repeating: unit, count: ClipLimits.scanBytes / unit.count)
         let start = Date()
         _ = SecretDetector.isSecret(text)
         let elapsed = Date().timeIntervalSince(start)
@@ -159,7 +159,7 @@ private let safeCases: [(name: String, text: String)] = [
         #expect(Date().timeIntervalSince(start) < 5)
     }
 
-    /// 검사 범위는 MCP에 닿는 범위(앞 100KB)와 같다
+    /// 검사 범위는 MCP에 닿는 범위(앞 100KB)에 4KB를 더한 만큼이다(110KB 뒤는 보지 않는다)
     @Test func onlyFirst100KBIsScanned() {
         let pad = String(repeating: "a ", count: 55_000) // 110KB
         #expect(!SecretDetector.isSecret(pad + "gh" + "p_" + body36))

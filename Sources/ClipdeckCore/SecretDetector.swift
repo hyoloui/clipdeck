@@ -4,8 +4,9 @@ import Foundation
 /// 놓치면 LLM에 비밀값이 노출되고, 과하면 일반 텍스트가 LLM에서 사라진다. 둘의 균형을 맞춘다.
 public enum SecretDetector {
     /// 복사할 때마다 호출되므로 아주 큰 텍스트는 앞부분만 검사한다.
-    /// MCP에 닿는 텍스트(`items.plain_text`)와 같은 범위라 검사하지 않은 부분은 MCP로도 나가지 않는다.
-    static let scanLimit = ClipLimits.plainTextBytes
+    /// MCP에 닿는 텍스트(`items.plain_text`, 앞 100KB)보다 4KB 길게 봐서, 검사하지 않은 부분은 MCP로 나가지 않고
+    /// 저장 경계에 걸친 키도 전체가 검사된다.
+    static let scanLimit = ClipLimits.scanBytes
 
     // 접두사·형식이 뚜렷한 키(한 번에 훑도록 하나로 합침). 줄·위치와 무관하게 어디서든 찾는다.
     // Regex는 불변이라 스레드 간 공유해도 안전하다(Sendable 표시만 없다)

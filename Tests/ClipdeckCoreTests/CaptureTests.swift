@@ -106,6 +106,36 @@ private let now = Date(timeIntervalSince1970: 1_000_000)
         #expect(clip.representations.first?.data == Data(big.utf8))
     }
 
+    /// 미리보기도 저장하는 잘린 텍스트에서만 만든다(공백 100KB 뒤의 키가 미리보기로 새지 않는다)
+    @Test func previewNeverReachesBeyondScanRange() throws {
+        let key = "gh" + "p_" + "Rt4Kp8Zw3Hd6Ns1Bc5Yf0Ge2Ja9Uo7Eq7Lm"
+        for text in [String(repeating: " ", count: 110_000) + key, String(repeating: "\n", count: 110_000) + key] {
+            let clip = try #require(ClipBuilder.make(representations: [rep(PasteboardTypes.plainText, text)],
+                                                     sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
+            #expect(!clip.preview.contains(key))
+            #expect(clip.plainText?.contains(key) == false)
+        }
+    }
+
+    /// 100KB 경계에 걸친 키는 전체가 검사 범위에 들어와 항목이 숨겨진다
+    @Test func secretStraddlingBoundaryIsHidden() throws {
+        let key = "gh" + "p_" + "Rt4Kp8Zw3Hd6Ns1Bc5Yf0Ge2Ja9Uo7Eq7Lm"
+        let pad = String(repeating: "a ", count: 51_195) // 102,390바이트
+        #expect(pad.utf8.count == 102_390)
+        let clip = try #require(ClipBuilder.make(representations: [rep(PasteboardTypes.plainText, pad + key + " tail")],
+                                                 sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
+        #expect(clip.mcpHidden)
+        #expect((clip.plainText?.utf8.count ?? .max) <= ClipLimits.plainTextBytes)
+        #expect(ClipLimits.scanBytes == ClipLimits.plainTextBytes + 4096)
+    }
+
+    /// "일반 텍스트가 있다"는 공백을 뺀 내용이 있는 텍스트다(분류와 붙여넣기가 같은 기준)
+    @Test func hasPlainTextIgnoresWhitespace() {
+        #expect(!KindClassifier.hasPlainText(nil))
+        #expect(!KindClassifier.hasPlainText(" \n\t"))
+        #expect(KindClassifier.hasPlainText(" x "))
+    }
+
     @Test func prefixCutsAtCharacterBoundary() {
         #expect(ClipLimits.prefix("가나", maxBytes: 4) == "가")
         #expect(ClipLimits.prefix("e\u{301}x", maxBytes: 2) == "") // 결합 문자를 가르지 않는다

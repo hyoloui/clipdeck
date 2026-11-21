@@ -4,6 +4,8 @@ import Foundation
 public enum ClipLimits {
     /// `items.plain_text`에 담는 최대 크기(UTF-8 바이트). 비밀값 검사·MCP `get_item`·`create_text_item` 상한도 이 값이다.
     public static let plainTextBytes = 102_400
+    /// 비밀값 검사 범위. 저장 범위보다 4KB 길어, 저장 경계 근처에서 시작한 키도 전체가 검사된다.
+    public static let scanBytes = plainTextBytes + 4096
 
     /// UTF-8로 `maxBytes`를 넘으면 그 안의 마지막 문자 경계에서 자른다.
     public static func prefix(_ s: String, maxBytes: Int = plainTextBytes) -> String {

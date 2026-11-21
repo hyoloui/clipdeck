@@ -54,6 +54,13 @@ private func rep(_ uti: String, _ text: String) -> Representation {
         }
     }
 
+    /// 공백뿐인 텍스트 + 이미지는 이미지로 분류되므로 일반 텍스트 모드에서도 이미지를 유지한다
+    @Test func imageWithBlankTextKeptWhenPlainText() {
+        let reps = [Representation(uti: PasteboardTypes.png, data: Data([1])), rep(PasteboardTypes.plainText, " \n")]
+        #expect(KindClassifier.classify(utis: reps.map(\.uti), plainText: " \n") == .image)
+        #expect(Array(PastePayload.build(reps, plainTextOnly: true).dropLast()) == reps)
+    }
+
     @Test func imageWithoutTextKeptWhenPlainText() {
         let reps = [Representation(uti: PasteboardTypes.tiff, data: Data([1])), rep(PasteboardTypes.rtf, "r")]
         #expect(Array(PastePayload.build(reps, plainTextOnly: true).dropLast()) == reps)
