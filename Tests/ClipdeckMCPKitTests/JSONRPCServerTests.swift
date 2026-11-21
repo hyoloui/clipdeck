@@ -92,8 +92,11 @@ import Testing
     @Test func toolsCallErrorsAndImage() throws {
         let (server, dir) = try makeServer()
         defer { try? FileManager.default.removeItem(at: dir) }
-        let unknown = try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zzz"}}"#))
-        guard case .object(let res)? = unknown["result"] else { Issue.record("result 없음"); return }
+        // 모르는 도구 이름은 프로토콜 오류(-32602)
+        #expect(errorCode(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"zzz"}}"#))) == -32602)
+        // 도구 실행 중 오류는 isError 결과
+        let failed = try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_item","arguments":{"id":999}}}"#))
+        guard case .object(let res)? = failed["result"] else { Issue.record("result 없음"); return }
         #expect(res["isError"] == .bool(true))
         #expect(errorCode(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call"}"#))) == -32602)
         #expect(errorCode(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":[1]}"#))) == -32602)
@@ -133,5 +136,34 @@ import Testing
         _ = server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"create_text_item","arguments":{"text":"hello from mcp"}}}"#)
         let r = try #require(server.handle(line: #"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"list_recent"}}"#))
         #expect(r.contains("hello from mcp"))
+    }
+
+    @Test func pingAndListParamsMustBeObjectIfPresent() throws {
+        let (server, dir) = try makeServer()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for method in ["ping", "tools/list"] {
+            #expect(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"\#(method)"}"#))["error"] == nil)
+            #expect(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"\#(method)","params":{}}"#))["error"] == nil)
+            #expect(errorCode(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"\#(method)","params":[1]}"#))) == -32602)
+            #expect(errorCode(try parse(server.handle(line: #"{"jsonrpc":"2.0","id":1,"method":"\#(method)","params":"x"}"#))) == -32602)
+        }
+    }
+
+    @Test func jsonrpcFieldMustBeTwoPointZero() throws {
+        let (server, dir) = try makeServer()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        for line in [#"{"id":1,"method":"ping"}"#, #"{"jsonrpc":"1.0","id":1,"method":"ping"}"#, #"{"jsonrpc":2,"id":1,"method":"ping"}"#] {
+            let r = try parse(server.handle(line: line))
+            #expect(errorCode(r) == -32600)
+            #expect(r["id"] == .number(1))
+        }
+    }
+
+    @Test func parseErrorResponseIsPublic() throws {
+        let (server, dir) = try makeServer()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let r = try parse(server.parseErrorResponse())
+        #expect(errorCode(r) == -32700)
+        #expect(r["id"] == .null)
     }
 }

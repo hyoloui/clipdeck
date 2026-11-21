@@ -81,6 +81,7 @@ Info.plist: `LSUIElement = true`(Dock 아이콘 없음), 번들 ID `local.hyolou
 - DB: `~/Library/Application Support/Clipdeck/clipdeck.sqlite`, WAL 모드, `busy_timeout` 설정(앱과 MCP가 동시 접근).
 - 큰 데이터(이미지·RTF·HTML)는 `.../Clipdeck/blobs/<sha256>` 파일로, DB에는 경로와 해시만.
 - 테이블(개요): `items`(id, kind[text|link|image|file|color], 미리보기 텍스트, content_hash, source_app_bundle_id, source_app_name, mcp_hidden, created_at, last_used_at, use_count), `item_representations`(item_id, UTI, 데이터 또는 blob 경로), `pinboards`(id, name, color, sort), `pinboard_items`(다대다), `items_fts`(FTS5, 텍스트 검색용).
+- `meta`(key, value): 항목 id 카운터(`next_item_id`)를 둔다. 스키마 버전은 2(`PRAGMA user_version`).
 - 같은 content_hash가 다시 복사되면 새로 만들지 않고 `last_used_at`만 올린다.
 
 ### 6.3 캡처
@@ -140,7 +141,7 @@ Info.plist: `LSUIElement = true`(Dock 아이콘 없음), 번들 ID `local.hyolou
 
 - 실행 파일 `clipdeck-mcp`, stdio 전송, MCP 프로토콜. 공식 `modelcontextprotocol/swift-sdk`가 Swift 6.4·CLT에서 빌드되면 사용하고, 안 되면 JSON-RPC 2.0을 직접 구현한다(빌더 판단).
 - **`mcp_hidden = 1` 항목은 모든 도구에서 제외한다**(검색 결과·목록·Pinboard 목록·`get_item`·`copy_to_clipboard`의 id 조회 모두. 숨김 항목 id로 요청하면 "없음"과 같은 응답). 조회는 저장소 계층의 MCP 전용 쿼리 한 곳에서만 하게 해서 빠뜨릴 수 없게 한다. `create_text_item`으로 들어온 텍스트도 같은 패턴 검사를 거친다.
-- 호출당 상한은 그대로(목록 최대 100개, 텍스트 최대 100KB). 호출 횟수·시간당 상한은 두지 않는다(제 판단: 숨김 처리가 실제 방어선이고, 셸 접근 때문에 횟수 제한은 효과가 없다).
+- 호출당 상한: 목록 최대 100개, 텍스트 최대 100KB. 호출 횟수 제한은 없지만 `create_text_item`은 최근 1시간 안에 MCP가 만든 항목(숨김 포함)이 200개 이상이면 오류를 돌려준다(숨김 처리가 실제 방어선이고, 이 상한은 저장소가 부풀어 오르는 것만 막는다). 항목 id는 재사용하지 않는다(삭제·숨김을 id로 구별하지 못하게). `create_text_item`은 호출마다 새 항목을 만들고, `copy_to_clipboard(text)`로 클립보드에 쓴 내용은 기록에 남지 않는다.
 - DB를 직접 연다. 쓰기 뒤에는 Darwin 알림(`local.hyoloui.clipdeck.db-changed`)을 보내 앱 목록을 새로 고친다.
 - 도구(삭제 도구는 두지 않는다):
 

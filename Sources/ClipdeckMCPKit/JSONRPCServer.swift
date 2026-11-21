@@ -29,7 +29,7 @@ public final class JSONRPCServer {
         if line.utf8.count > Self.maxLineBytes { return oversizedLineResponse() }
         if line.allSatisfy(\.isWhitespace) { return nil }
         guard let value = try? JSONDecoder().decode(JSONValue.self, from: Data(line.utf8)) else {
-            return Self.error(id: .null, code: -32700, "JSON을 해석할 수 없습니다 (parse error)")
+            return parseErrorResponse()
         }
         // 배치(배열)와 객체가 아닌 값은 지원하지 않는다.
         guard case .object(let req) = value else {
@@ -41,12 +41,20 @@ public final class JSONRPCServer {
         case .number?, .string?, .null?: id = req["id"]
         default: return Self.error(id: .null, code: -32600, "id는 숫자, 문자열, null이어야 합니다 (invalid id)")
         }
+        guard req["jsonrpc"] == .string("2.0") else {
+            return Self.error(id: id ?? .null, code: -32600, "jsonrpc는 \"2.0\"이어야 합니다 (invalid request)")
+        }
         guard let method = req["method"]?.stringValue else {
             return Self.error(id: id ?? .null, code: -32600, "method가 없습니다 (invalid request)")
         }
         // id가 없으면 알림이다. 처리할 알림은 없으므로 응답하지 않는다.
         guard let id else { return nil }
         return respond(id: id, method: method, params: req["params"])
+    }
+
+    /// JSON으로 해석할 수 없는 줄(잘못된 UTF-8 포함)에 대한 응답.
+    public func parseErrorResponse() -> String {
+        Self.error(id: .null, code: -32700, "JSON을 해석할 수 없습니다 (parse error)")
     }
 
     /// 한 줄이 상한을 넘었을 때의 응답(입력 쪽이 줄을 버린 뒤 쓴다).
@@ -59,6 +67,7 @@ public final class JSONRPCServer {
     private func respond(id: JSONValue, method: String, params: JSONValue?) -> String {
         switch method {
         case "ping":
+            guard Self.paramsAbsentOrObject(params) else { return Self.invalidParams(id) }
             return Self.result(id: id, .object([:]))
         case "initialize":
             guard case .object(let p)? = params else { return Self.invalidParams(id) }
@@ -71,6 +80,7 @@ public final class JSONRPCServer {
                 "instructions": .string(Self.instructions),
             ]))
         case "tools/list":
+            guard Self.paramsAbsentOrObject(params) else { return Self.invalidParams(id) }
             let list = tools.definitions.map { d -> JSONValue in
                 .object(["name": .string(d.name), "description": .string(d.description), "inputSchema": d.inputSchema])
             }
@@ -83,6 +93,8 @@ public final class JSONRPCServer {
             case .object(let a)?: arguments = a
             default: return Self.invalidParams(id)
             }
+            // 모르는 도구 이름은 MCP 명세대로 프로토콜 오류다(실행 중 오류는 아래 isError 결과).
+            guard tools.definitions.contains(where: { $0.name == name }) else { return Self.invalidParams(id) }
             let r = tools.call(name: name, arguments: arguments)
             let content = r.content.map { c -> JSONValue in
                 switch c {
@@ -97,6 +109,14 @@ public final class JSONRPCServer {
     }
 
     // MARK: 응답 만들기
+
+    private static func paramsAbsentOrObject(_ params: JSONValue?) -> Bool {
+        switch params {
+        case nil: true
+        case .object?: true
+        default: false
+        }
+    }
 
     private static func invalidParams(_ id: JSONValue) -> String {
         error(id: id, code: -32602, "params가 올바르지 않습니다 (invalid params)")

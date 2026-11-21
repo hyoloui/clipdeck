@@ -186,11 +186,12 @@ private func sha256Hex(_ data: Data) -> String {
 @Test func mcpMarkUsedIgnoresHidden() throws {
     let (store, dir) = try makeTempStore()
     defer { try? FileManager.default.removeItem(at: dir) }
-    guard case .inserted(let hid) = try store.insert(textClip("secret-ish", hidden: true)),
-          case .inserted(let vis) = try store.insert(textClip("visible")) else { return }
+    guard case .inserted(let hid) = try store.insert(textClip("secret-ish", hidden: true), now: Date(timeIntervalSince1970: 1000)),
+          case .inserted(let vis) = try store.insert(textClip("visible")) else { Issue.record("삽입 실패"); return }
     try store.mcpMarkUsed(id: hid)
     try store.mcpMarkUsed(id: vis)
     #expect(try store.item(id: hid)?.useCount == 0)
+    #expect(try store.item(id: hid)?.lastUsedAt == Date(timeIntervalSince1970: 1000))
     #expect(try store.item(id: vis)?.useCount == 1)
 }
 
@@ -205,5 +206,7 @@ private func sha256Hex(_ data: Data) -> String {
     // 비밀값이어도 같은 응답
     #expect(try store.mcpCreateText("sk-" + String(repeating: "aB3dE6gH9j", count: 4), now: now) == .rateLimited)
     #expect(try store.db.query("SELECT COUNT(*) AS n FROM items").first?["n"] == .int(200))
-    #expect(try store.mcpCreateText("한 개 더 있는 메모", now: now.addingTimeInterval(3601)) != .rateLimited)
+    guard case .created = try store.mcpCreateText("한 개 더 있는 메모", now: now.addingTimeInterval(3601)) else {
+        Issue.record("1시간 뒤에는 다시 성공해야 한다"); return
+    }
 }
