@@ -46,7 +46,8 @@ final class ToastWindow {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .transient]
         panel.isReleasedWhenClosed = false
         panel.ignoresMouseEvents = !opensAccessibilitySettings
-        if let screen = NSScreen.main {
+        let mouse = NSEvent.mouseLocation
+        if let screen = NSScreen.screens.first(where: { NSMouseInRect(mouse, $0.frame, false) }) ?? NSScreen.main {
             let f = screen.visibleFrame
             panel.setFrameOrigin(NSPoint(x: f.midX - size.width / 2, y: f.minY + 60))
         }
@@ -71,5 +72,6 @@ final class ToastWindow {
 private final class ClickableEffectView: NSVisualEffectView {
     var onClick: (() -> Void)?
     override func mouseDown(with event: NSEvent) { onClick?() }
+    override func hitTest(_ point: NSPoint) -> NSView? { frame.contains(point) ? self : nil }
     override func acceptsFirstMouse(for event: NSEvent?) -> Bool { true }
 }
