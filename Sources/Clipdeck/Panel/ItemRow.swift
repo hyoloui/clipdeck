@@ -70,11 +70,13 @@ struct ItemRow: View {
             Text(item.sourceAppName ?? "")
                 .font(.caption)
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .foregroundStyle(secondary)
                 .frame(width: Layout.appColumnWidth, alignment: .trailing)
             Text(RelativeTime.string(from: item.lastUsedAt))
                 .font(.caption)
                 .lineLimit(1)
+                .truncationMode(.tail)
                 .foregroundStyle(secondary)
                 .frame(width: Layout.timeColumnWidth, alignment: .trailing)
         }

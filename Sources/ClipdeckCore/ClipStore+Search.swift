@@ -56,4 +56,18 @@ extension ClipStore {
         params.append(.int(Int64(max(q.limit, 0))))
         return (sql, params)
     }
+
+    /// 기록에 있는 출처 앱(최근 사용 순, 번들 ID별 한 줄). 앱 필터 메뉴용.
+    public func sourceApps(limit: Int = 20) throws -> [(bundleID: String, name: String)] {
+        let rows = try db.query("""
+            SELECT source_app_bundle_id AS bid, MAX(source_app_name) AS name, MAX(last_used_at) AS used
+            FROM items WHERE source_app_bundle_id IS NOT NULL
+            GROUP BY source_app_bundle_id ORDER BY used DESC LIMIT ?
+            """, [.int(Int64(max(limit, 0)))])
+        return rows.compactMap { row in
+            guard case .text(let bid) = row["bid"] else { return nil }
+            let name: String = if case .text(let n) = row["name"], !n.isEmpty { n } else { bid }
+            return (bid, name)
+        }
+    }
 }

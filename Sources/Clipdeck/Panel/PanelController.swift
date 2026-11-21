@@ -33,8 +33,14 @@ final class PanelController: NSObject {
     private var clickMonitor: Any?
     private var resignObserver: NSObjectProtocol?
     private var keys = PanelKeyBindings()
+    /// 패널이 열려 있는(또는 열려는) 논리 상태. 페이드아웃 중에는 false다.
+    private var isOpen = false
+    /// 페이드아웃을 취소하기 위한 세대 번호
+    private var hideToken = 0
     /// 메뉴·시트가 떠 있는 동안에는 포커스를 잃어도 닫지 않는다
-    private var isPresentingModal = false
+    private var menuOpen = false
+    private var sheetOpen = false
+    private var isPresentingModal: Bool { menuOpen || sheetOpen }
 
     init(store: ClipStore, settings: SettingsStore) {
         self.store = store
@@ -43,12 +49,12 @@ final class PanelController: NSObject {
         super.init()
     }
 
-    var isVisible: Bool { panel?.isVisible ?? false }
-
-    func toggle() { isVisible ? hide() : show() }
+    func toggle() { isOpen ? hide() : show() }
 
     func show() {
-        guard !isVisible else { return }
+        guard !isOpen else { return }
+        isOpen = true
+        hideToken += 1 // 페이드아웃 중이면 취소하고 바로 다시 나타난다
         onWillShow?()
         let s = settings.load()
         keys = s.panelKeys
@@ -56,13 +62,16 @@ final class PanelController: NSObject {
         panel.sharingType = s.hideDuringScreenSharing ? .none : .readOnly
 
         model.resetForShow()
+        presence.apps = model.sourceApps()
         presence.revealedItemID = nil
         presence.generation += 1
         position(panel)
 
-        // 첫 프레임은 투명·축소 상태로 만들고 곧바로 스프링으로 등장시킨다
-        presence.shown = false
-        panel.alphaValue = 0
+        // 숨겨져 있던 경우만 투명·축소 상태에서 시작해 스프링으로 등장시킨다(페이드 도중이면 현재 값에서 이어간다)
+        if !panel.isVisible {
+            presence.shown = false
+            panel.alphaValue = 0
+        }
         panel.makeKeyAndOrderFront(nil)
         focusSearchField()
         installMonitors()
@@ -73,13 +82,33 @@ final class PanelController: NSObject {
         }
     }
 
-    func hide() {
+    /// `animated`가 true면 120ms 페이드아웃 뒤 닫는다. 붙여넣기·복사 경로는 false로 즉시 닫는다.
+    func hide(animated: Bool = true) {
         guard let panel, panel.isVisible else { return }
+        if !isOpen { // 이미 페이드아웃 중
+            if !animated { hideToken += 1; finishHide() }
+            return
+        }
+        isOpen = false
         removeMonitors()
-        // 퇴장은 지연 없이 즉시(붙여넣기 흐름이 이 뒤에 이어진다)
+        hideToken += 1
+        guard animated else { finishHide(); return }
+        let token = hideToken
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.12
+            panel.animator().alphaValue = 0
+        }, completionHandler: { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self, self.hideToken == token, !self.isOpen else { return }
+                self.finishHide()
+            }
+        })
+    }
+
+    private func finishHide() {
         var t = Transaction(); t.disablesAnimations = true
         withTransaction(t) { presence.shown = false }
-        panel.orderOut(nil)
+        panel?.orderOut(nil)
     }
 
     // MARK: 생성
@@ -97,7 +126,7 @@ final class PanelController: NSObject {
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
         panel.hidesOnDeactivate = false
-        panel.isMovableByWindowBackground = true
+        panel.isMovableByWindowBackground = false
         panel.setAccessibilityLabel("Clipdeck 검색 패널")
 
         let effect = NSVisualEffectView()
@@ -108,9 +137,11 @@ final class PanelController: NSObject {
 
         let root = PanelView(model: model, presence: presence, loader: PreviewLoader(store: store),
                              plainTextHint: Self.plainTextHint(keys.plainText),
-                             onActivate: { [weak self] item in self?.paste(item, plainText: false) })
+                             onActivate: { [weak self] item in self?.paste(item, plainText: false) },
+                             onNewBoard: { [weak self] in self?.promptNewBoard(for: nil) })
         let host = NSHostingView(rootView: root)
         host.sizingOptions = []
+        host.safeAreaRegions = []
         host.frame = effect.bounds
         host.autoresizingMask = [.width, .height]
         effect.addSubview(host)
@@ -188,8 +219,12 @@ final class PanelController: NSObject {
         guard let panel, event.window === panel else { return event }
         let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
         let editor = panel.firstResponder as? NSTextView
-        // 한글 등 조합 중에는 ↩·방향키·Esc·⌫를 입력기에 넘긴다
-        if editor?.hasMarkedText() == true { return event }
+        // 한글 등 조합 중: ↩·↑↓·Tab류는 조합을 확정하고 같은 입력으로 바로 처리하고, 나머지(Esc·⌫ 등)는 입력기에 넘긴다
+        if let editor, editor.hasMarkedText() {
+            let commitKeys: Set<UInt16> = [36, 76, 125, 126, 48, keys.plainText.keyCode, keys.nextBoard.keyCode, keys.previousBoard.keyCode]
+            guard commitKeys.contains(event.keyCode) else { return event }
+            editor.unmarkText()
+        }
 
         if matches(keys.plainText, event, flags: flags), let item = model.selectedItem {
             paste(item, plainText: true); return nil
@@ -208,6 +243,11 @@ final class PanelController: NSObject {
         case (51, []): // ⌫: 검색어가 있으면 글자 삭제가 우선
             guard model.query.isEmpty else { return event }
             deleteSelected(); return nil
+        case (9, .command): return editAction(#selector(NSText.paste(_:)), editor, event)
+        case (0, .command): return editAction(#selector(NSText.selectAll(_:)), editor, event)
+        case (7, .command): return editAction(#selector(NSText.cut(_:)), editor, event)
+        case (6, .command): return editAction(Selector(("undo:")), editor, event)
+        case (6, [.command, .shift]): return editAction(Selector(("redo:")), editor, event)
         case (35, .command): // ⌘P
             DispatchQueue.main.async { [weak self] in self?.showBoardMenu() }
             return nil
@@ -231,6 +271,13 @@ final class PanelController: NSObject {
         }
     }
 
+    /// 검색창 편집 단축키(⌘V·⌘A·⌘X·⌘Z). 앱이 비활성이라 메뉴 단축키가 오지 않으므로 직접 보낸다.
+    private func editAction(_ action: Selector, _ editor: NSTextView?, _ event: NSEvent) -> NSEvent? {
+        guard editor != nil else { return event }
+        NSApp.sendAction(action, to: nil, from: nil)
+        return nil
+    }
+
     // MARK: 동작
 
     private func paste(_ item: ClipItem, plainText: Bool) {
@@ -238,7 +285,7 @@ final class PanelController: NSObject {
             onPaste(item.id, plainText)
         } else {
             fallbackCopy(item, plainText: plainText)
-            hide()
+            hide(animated: false)
         }
     }
 
@@ -248,7 +295,7 @@ final class PanelController: NSObject {
         } else {
             fallbackCopy(item, plainText: true)
         }
-        hide()
+        hide(animated: false)
     }
 
     /// PasteService가 연결되기 전의 임시 동작: 텍스트만 클립보드에 쓴다
@@ -262,7 +309,12 @@ final class PanelController: NSObject {
     private func deleteSelected() {
         guard let item = model.selectedItem else { return }
         do {
-            try store.delete(id: item.id)
+            if model.boardIndex > 0 {
+                // 보드 탭에서는 그 보드에서만 뺀다(기록에는 남는다)
+                try store.remove(itemID: item.id, fromPinboard: model.boards[model.boardIndex - 1].id)
+            } else {
+                try store.delete(id: item.id)
+            }
             model.reload()
         } catch {
             Self.log.error("항목 삭제 실패: \(String(describing: error), privacy: .public)")
@@ -296,12 +348,12 @@ final class PanelController: NSObject {
         let row = presence.selectedRowFrame
         // 선택 행 아래쪽, 목록 안쪽에 띄운다(호스팅 뷰는 위가 원점)
         let point = NSPoint(x: row.minX + Layout.s24, y: row.maxY)
-        isPresentingModal = true
+        menuOpen = true
         pendingItemID = item.id
         menu.popUp(positioning: nil, at: host.isFlipped ? point : NSPoint(x: point.x, y: host.bounds.height - point.y), in: host)
-        isPresentingModal = false
-        // 메뉴가 닫힌 뒤 패널이 키 창이 아니면(예: 바깥 클릭) 닫는다
-        if panel?.isKeyWindow == false, panel?.attachedSheet == nil { hide() }
+        menuOpen = false
+        // 메뉴가 닫힌 뒤 패널이 키 창이 아니면(예: 바깥 클릭) 닫는다. 시트가 떠 있으면 그대로 둔다.
+        if !sheetOpen, panel?.isKeyWindow == false { hide() }
     }
 
     private var pendingItemID: Int64?
@@ -331,30 +383,41 @@ final class PanelController: NSObject {
         }
     }
 
-    private func promptNewBoard(for itemID: Int64) {
+    /// `itemID`가 있으면 만든 보드에 그 항목도 넣는다. 이름이 비었거나 중복이면 오류 문구와 함께 시트를 다시 연다.
+    private func promptNewBoard(for itemID: Int64?, preset: String = "", error: String? = nil) {
         guard let panel else { return }
         let alert = NSAlert()
         alert.messageText = "새 보드 만들기"
-        alert.informativeText = "보드 이름을 입력하세요."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 240, height: Layout.s24))
+        alert.informativeText = error ?? "보드 이름을 입력하세요."
+        let field = NSTextField(string: preset)
+        field.frame = NSRect(x: 0, y: 0, width: 240, height: Layout.s24)
         field.setAccessibilityLabel("보드 이름")
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
         alert.addButton(withTitle: "만들기")
         alert.addButton(withTitle: "취소")
-        isPresentingModal = true
+        sheetOpen = true
         alert.beginSheetModal(for: panel) { [weak self] response in
             MainActor.assumeIsolated {
                 guard let self else { return }
-                self.isPresentingModal = false
                 if response == .alertFirstButtonReturn {
                     do {
                         let id = try self.store.createPinboard(name: field.stringValue, color: nil)
-                        self.addToBoard(itemID: itemID, boardID: id)
+                        if let itemID { self.addToBoard(itemID: itemID, boardID: id) } else { self.model.reload() }
                     } catch {
+                        let message = (error as? PinboardError) == .duplicateName ? "같은 이름의 보드가 이미 있습니다."
+                            : (error as? PinboardError) == .emptyName ? "보드 이름을 입력하세요."
+                            : "보드를 만들지 못했습니다."
                         Self.log.error("보드 만들기 실패: \(String(describing: error), privacy: .public)")
+                        // 시트는 닫히고 오류 문구와 함께 바로 다시 열린다(sheetOpen은 유지)
+                        let preset = field.stringValue
+                        DispatchQueue.main.async { [weak self] in
+                            self?.promptNewBoard(for: itemID, preset: preset, error: message)
+                        }
+                        return
                     }
                 }
+                self.sheetOpen = false
                 panel.makeKeyAndOrderFront(nil)
                 self.focusSearchField()
             }

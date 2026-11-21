@@ -94,4 +94,16 @@ import Foundation
         let rows = try store.db.query(sql, params).compactMap(ClipStore.clipItem)
         #expect(rows.map(\.preview) == ["visible"])
     }
+
+    @Test func sourceAppsRecentFirst() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.insert(textClip("a", app: "com.old"), now: Date(timeIntervalSince1970: 1))
+        _ = try store.insert(textClip("b", app: "com.new"), now: Date(timeIntervalSince1970: 3))
+        _ = try store.insert(textClip("c", app: "com.old"), now: Date(timeIntervalSince1970: 2))
+        _ = try store.insert(textClip("d"), now: Date(timeIntervalSince1970: 4)) // 출처 없음은 제외
+        let apps = try store.sourceApps()
+        #expect(apps.map(\.bundleID) == ["com.new", "com.old"])
+        #expect(try store.sourceApps(limit: 1).count == 1)
+    }
 }

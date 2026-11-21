@@ -93,4 +93,44 @@ import Foundation
         model.reload()
         #expect(model.items.count == 200)
     }
+
+    @Test func kindAndAppFilters() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.insert(textClip("alpha", app: "com.a"), now: Date(timeIntervalSince1970: 1))
+        _ = try store.insert(textClip("beta", app: "com.b"), now: Date(timeIntervalSince1970: 2))
+        let link = NewClip(kind: .link, preview: "https://x.dev", plainText: "https://x.dev", contentHash: "h-link",
+                           sourceAppBundleID: "com.a", sourceAppName: "com.a", mcpHidden: false,
+                           representations: [Representation(uti: "public.utf8-plain-text", data: Data("https://x.dev".utf8))])
+        _ = try store.insert(link, now: Date(timeIntervalSince1970: 3))
+        let model = PanelModel(store: store)
+        model.reload()
+        #expect(model.items.count == 3)
+        model.kindFilter = .link
+        #expect(model.items.map(\.preview) == ["https://x.dev"])
+        model.kindFilter = nil
+        model.appFilter = "com.a"
+        #expect(model.items.count == 2)
+        model.kindFilter = .text
+        #expect(model.items.map(\.preview) == ["alpha"]) // 조합
+        // 열 때 초기화
+        model.query = "zzz"
+        model.resetForShow()
+        #expect(model.kindFilter == nil && model.appFilter == nil && model.query.isEmpty)
+        #expect(model.items.count == 3)
+    }
+
+    @Test func loadErrorOnFailure() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        _ = try store.insert(textClip("a"))
+        let model = PanelModel(store: store)
+        model.reload()
+        #expect(model.loadError == nil)
+        #expect(model.items.count == 1)
+        try store.db.execute("DROP TABLE pinboards") // 읽기 실패를 만든다
+        model.reload()
+        #expect(model.loadError != nil)
+        #expect(model.items.isEmpty)
+    }
 }

@@ -10,12 +10,12 @@ enum Layout {
 
     static let panelWidth: CGFloat = 760
     static let panelHeight: CGFloat = 480
-    static let listWidth: CGFloat = 380
+    static let listWidth: CGFloat = 420
     static let rowHeight: CGFloat = 32
     static let rowCorner: CGFloat = 8
     static let numberWidth: CGFloat = 16
     static let iconWidth: CGFloat = 16
-    static let appColumnWidth: CGFloat = 64
-    static let timeColumnWidth: CGFloat = 40
+    static let appColumnWidth: CGFloat = 96
+    static let timeColumnWidth: CGFloat = 64
     static let swatchSize: CGFloat = 64
 }

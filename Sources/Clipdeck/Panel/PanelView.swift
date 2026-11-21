@@ -10,6 +10,8 @@ final class PanelPresence: ObservableObject {
     @Published var revealedItemID: Int64?
     /// 패널을 열 때마다 1씩 늘어난다(스크롤 위치 초기화용)
     @Published var generation = 0
+    /// 앱 필터 메뉴 목록. 열 때 한 번만 읽는다(타이핑마다 읽지 않는다).
+    @Published var apps: [(bundleID: String, name: String)] = []
     /// 선택 행 위치(⌘P 메뉴 위치용). 화면을 다시 그릴 필요가 없어 @Published가 아니다.
     var selectedRowFrame: CGRect = .zero
 }
@@ -61,6 +63,7 @@ struct PanelView: View {
     let loader: PreviewLoader
     let plainTextHint: String
     let onActivate: (ClipItem) -> Void
+    let onNewBoard: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -79,6 +82,8 @@ struct PanelView: View {
             footer
         }
         .frame(width: Layout.panelWidth, height: Layout.panelHeight)
+        // 제목 막대 safe area만큼 내용이 밀리지 않게 한다
+        .ignoresSafeArea()
         .coordinateSpace(name: "panel")
         .onPreferenceChange(SelectedRowFrameKey.self) { presence.selectedRowFrame = $0 }
         // 등장: 스프링(끊고 되돌릴 수 있음). 동작 줄이기면 크기 변화 없이 페이드만.
@@ -97,12 +102,49 @@ struct PanelView: View {
                     .accessibilityHidden(true)
                 SearchField(text: $model.query)
                     .frame(height: Layout.s24)
+                kindMenu
+                appMenu
             }
             boardTabs
         }
         .padding(.horizontal, Layout.s16)
-        .padding(.top, Layout.s16)
+        // 투명 제목 막대(약 28pt)가 검색창 클릭을 가로채지 않도록 그 아래에서 시작한다
+        .padding(.top, Layout.s16 + Layout.s16)
         .padding(.bottom, Layout.s8)
+    }
+
+    private static let kinds: [(ItemKind?, String)] = [
+        (nil, "전체"), (.text, "텍스트"), (.link, "링크"), (.image, "이미지"), (.file, "파일"), (.color, "색")
+    ]
+
+    private var kindMenu: some View {
+        let current = Self.kinds.first { $0.0 == model.kindFilter }?.1 ?? "전체"
+        return Menu {
+            ForEach(Self.kinds, id: \.1) { kind, title in
+                Button(title) { model.kindFilter = kind }
+            }
+        } label: {
+            Text(model.kindFilter == nil ? "종류" : current).lineLimit(1)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("종류 필터, 현재 \(current)")
+    }
+
+    private var appMenu: some View {
+        let apps = presence.apps
+        let current = apps.first { $0.bundleID == model.appFilter }?.name ?? model.appFilter
+        return Menu {
+            Button("전체") { model.appFilter = nil }
+            ForEach(apps, id: \.bundleID) { app in
+                Button(app.name) { model.appFilter = app.bundleID }
+            }
+        } label: {
+            Text(current ?? "앱").lineLimit(1).frame(maxWidth: 96)
+        }
+        .menuStyle(.borderlessButton)
+        .fixedSize()
+        .accessibilityLabel("앱 필터, 현재 \(current ?? "전체")")
     }
 
     private var boardTabs: some View {
@@ -112,6 +154,15 @@ struct PanelView: View {
                 ForEach(Array(model.boards.enumerated()), id: \.element.id) { i, board in
                     tab(board.name, index: i + 1)
                 }
+                Button(action: onNewBoard) {
+                    Image(systemName: "plus")
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .frame(width: Layout.s24, height: Layout.s24)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("새 보드 만들기")
             }
         }
         .frame(height: Layout.s24)
@@ -135,7 +186,16 @@ struct PanelView: View {
 
     @ViewBuilder
     private var list: some View {
-        if model.items.isEmpty {
+        if let error = model.loadError {
+            VStack(spacing: Layout.s8) {
+                Text("기록을 불러오지 못했습니다").font(.callout)
+                Text(error).font(.caption).foregroundStyle(.tertiary).lineLimit(4)
+            }
+            .foregroundStyle(.secondary)
+            .multilineTextAlignment(.center)
+            .padding(Layout.s16)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if model.items.isEmpty {
             Text(emptyMessage)
                 .font(.callout)
                 .foregroundStyle(.secondary)
@@ -166,12 +226,12 @@ struct PanelView: View {
     }
 
     private var emptyMessage: String {
-        if !model.query.isEmpty { return "찾는 항목이 없습니다" }
+        if !model.query.isEmpty || model.kindFilter != nil || model.appFilter != nil { return "찾는 항목이 없습니다" }
         return model.boardIndex == 0 ? "복사한 내용이 여기에 쌓입니다" : "이 보드는 비어 있습니다"
     }
 
     private var footer: some View {
-        Text("↩ 붙여넣기   \(plainTextHint) 일반 텍스트   ⌘1-9 바로   ⌘P 고정   ⌫ 삭제   esc 닫기")
+        Text("↩ 붙여넣기   \(plainTextHint) 일반 텍스트   ⌘1-9 바로   ⌘P 고정   ⌘H MCP 숨김   ⌫ 삭제   esc 닫기")
             .font(.caption)
             .foregroundStyle(.secondary)
             .lineLimit(1)
