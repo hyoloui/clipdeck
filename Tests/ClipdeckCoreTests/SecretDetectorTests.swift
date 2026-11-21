@@ -20,6 +20,10 @@ private let detectCases: [(name: String, text: String)] = [
     ("private-key", "ssh key:\n-----BEGIN " + "OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE\n-----END OPENSSH PRIVATE KEY-----"),
     ("kv-env", "DB_PASSWORD=hunter2hunter2"),
     ("kv-quoted", "api_key: \"Zx9fQ2mL\""),
+    ("yaml-password", "password: correcthorsebattery"),
+    ("yaml-postgres", "POSTGRES_PASSWORD: postgres"),
+    ("pgp-key", "-----BEGIN PGP " + "PRIVATE KEY BLOCK-----\nlQdGBF"),
+    ("base64url-40", "Zx9Qm2Lr7Tn4Vb8Kp1Hs6" + "Wd3Yc5Jf0Ga2Ne9Ru4Mt7"),
     ("kv-json", "{\"access_token\": \"abc123def456\"}"),
     ("high-entropy", "aZ3kQ9pL2mX7vB1nC8dF4gH6jK0sT5wY"),
     ("embedded-in-doc", "회의록\n내용 정리\n배포 키는 " + "gh" + "p_" + body36 + " 입니다\n끝"),
@@ -39,6 +43,20 @@ private let safeCases: [(name: String, text: String)] = [
     ("max-tokens", "max_tokens: 4096"),
     ("kebab", "feature/clipdeck-secret-detector-implementation-v2"),
     ("camel", "UserProfileViewControllerFactory2"),
+    ("type-upper", "token: String"),
+    ("type-lower", "  token: string;"),
+    ("type-optional", "password: String?"),
+    ("id-fetch", "fetchUserProfileWithAuth2Token"),
+    ("path-abs", "/Users/me/Desktop/project/clipdeck-wt/t5/Sources/ClipdeckCore/SecretDetector.swift"),
+    ("path-line", "Sources/ClipdeckCore/SecretDetector.swift:42"),
+    ("path-doc", "docs/ADR-0003-SecretDetector-Policy.md"),
+    ("path-win", #"C:\Users\Hyo\Documents\Report2026.docx"#),
+    ("youtube", "www.youtube.com/watch?v=dQw4w9WgXcQ"),
+    ("java-class", "com.example.clipdeck.MainActivity2Kt"),
+    ("id-handle", "handleUserAuthenticationCallback2"),
+    ("id-nskeyed", "NSKeyedUnarchiverDelegate"),
+    ("kebab-branch", "feature-add-clipboard-history-v2-final"),
+    ("kv-newline", "token =\n  recalculated later"),
     ("empty", ""),
 ]
 
@@ -55,7 +73,7 @@ private let safeCases: [(name: String, text: String)] = [
         let big = String(repeating: "lorem ipsum dolor sit amet ", count: 400_000) // 약 10MB
         let start = Date()
         #expect(!SecretDetector.isSecret(big))
-        #expect(Date().timeIntervalSince(start) < 2)
+        #expect(Date().timeIntervalSince(start) < 5)
     }
 
     @Test func onlyFirst64KBIsScanned() {

@@ -19,12 +19,12 @@ public enum SecretDetector {
         #"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"#,
         #"\bAIza[0-9A-Za-z_-]{35}"#,
         #"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"#,
-        #"-----BEGIN [A-Z ]*PRIVATE KEY-----"#,
+        #"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----"#,
     ].joined(separator: "|"))
 
     // 키-값 형태. 값은 따옴표를 뺀 본문(3번째 캡처)만 판정에 쓴다.
     nonisolated(unsafe) private static let keyValue = try! Regex(
-        #"(?i)(?:password|passwd|secret|token|api[_-]?key)(?:[_-]?(?:key|token))?["']?\s*([:=])\s*(["']?)([^\s"']{6,})"#)
+        #"(?i)(?:password|passwd|secret|token|api[_-]?key)(?:[_-]?(?:key|token))?["']?[ \t]*([:=])[ \t]*(["']?)([^\s"']{6,})"#)
 
     nonisolated(unsafe) private static let uuid = try! Regex(
         #"[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}"#)
@@ -44,18 +44,39 @@ public enum SecretDetector {
         guard let sep = m.output[1].substring, let quote = m.output[2].substring,
               let value = m.output[3].substring else { return false }
         if let first = value.first, "$<{%(".contains(first) { return false }
-        // 따옴표 없는 `: 영문자만`은 타입 선언(token: String)이나 설명문일 가능성이 높다
-        if sep == ":" && quote.isEmpty && value.allSatisfy(\.isLetter) { return false }
+        // 따옴표 없는 `:` 뒤 값이 타입 이름이면 선언이다(`token: String`, `password: String?`).
+        // 영문자만이라는 이유로 통째로 빼면 `password: correcthorsebattery`를 놓치므로 타입 이름만 거른다.
+        if sep == ":" && quote.isEmpty && isTypeName(value) { return false }
         return true
     }
 
+    private static let typeKeywords: Set<String> = [
+        "string", "number", "boolean", "any", "str", "bytes", "null", "nil", "none",
+        "undefined", "true", "false",
+    ]
+
+    /// 뒤의 `; , ? !`를 뗀 값이 대문자로 시작하는 식별자(String, Int, Data, Token)이거나 소문자 타입 키워드인가
+    private static func isTypeName(_ value: Substring) -> Bool {
+        let v = value.reversed().drop { ";,?!".contains($0) }.reversed()
+        guard let first = v.first else { return false }
+        let word = String(v)
+        if typeKeywords.contains(word.lowercased()) && word == word.lowercased() { return true }
+        return first.isUppercase && v.allSatisfy { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
     /// 고엔트로피 판정(공백으로 나눈 토큰 단위).
-    /// 기준: 24자 이상, 대·소문자·숫자 모두 포함, 샤넌 엔트로피 4.0 bit/문자 이상,
-    /// URL·순수 hex(git SHA·sha256)·UUID 제외.
-    /// 4.0은 지시서 값 그대로이며 조정하지 않았다. 24자 토큰의 이론 최대가 약 4.58이라
-    /// 4.0이면 문자가 거의 반복되지 않는 무작위 문자열만 통과한다. 반면 camelCase 식별자
-    /// (`UserProfileViewControllerFactory2` 약 3.6)와 kebab 브랜치명은 반복 문자 때문에
-    /// 걸리지 않는다(테스트로 확인).
+    /// 조건: 앞뒤 따옴표·괄호를 뗀 토큰이 24자 이상, 문자가 `[A-Za-z0-9_+=-]`뿐, 대·소문자·숫자 모두 포함,
+    /// 순수 hex(git SHA·sha256)·UUID 아님, 엔트로피 4.0 bit/문자 이상, 단어 조각 비율 50% 이하.
+    /// - 문자 집합 제한: `/ \ . : ?`가 들어가면 경로·도메인·URL이다. 검토에서 `/Users/.../SecretDetector.swift`,
+    ///   `Sources/.../SecretDetector.swift:42`, `docs/ADR-0003-...md`, `C:\Users\...docx`,
+    ///   `www.youtube.com/watch?v=...`, `com.example.clipdeck.MainActivity2Kt`가 엔트로피 4.0만으로 잡혔다.
+    /// - 단어 조각 비율: 엔트로피 4.0은 24자 이상이면 알파벳이 거의 반복되지 않는 식별자도 넘는다
+    ///   (`fetchUserProfileWithAuth2Token`, `handleUserAuthenticationCallback2`, `NSKeyedUnarchiverDelegate`,
+    ///   `feature-add-clipboard-history-v2-final`이 실제로 4.0을 넘었다). 그래서 `[A-Z]?[a-z]{3,}`(영단어 조각)이
+    ///   토큰 길이의 절반을 넘으면 식별자로 보고 뺀다. 무작위 키(`aZ3kQ9pL...`, base64url 40자)는 소문자가
+    ///   1~2자씩 끊겨 조각 비율이 0에 가깝다. 엔트로피 4.0 자체는 조정하지 않았다.
+    nonisolated(unsafe) private static let wordPiece = try! Regex(#"[A-Z]?[a-z]{3,}"#)
+
     private static func isHighEntropy(_ raw: Substring) -> Bool {
         let token = raw.trimmingCharacters(in: CharacterSet(charactersIn: "\"'`,;()[]{}<>"))
         guard token.count >= 24, !token.contains("://") else { return false }
@@ -65,12 +86,15 @@ public enum SecretDetector {
             case 0x41...0x5A: hasUpper = true
             case 0x61...0x7A: hasLower = true
             case 0x30...0x39: hasDigit = true
-            default: break
+            case 0x5F, 0x2B, 0x3D, 0x2D: break // _ + = -
+            default: return false
             }
             if !ch.properties.isASCIIHexDigit { allHex = false }
         }
         guard hasUpper, hasLower, hasDigit, !allHex else { return false }
         if token.wholeMatch(of: uuid) != nil { return false }
+        let wordChars = token.matches(of: wordPiece).reduce(0) { $0 + token[$1.range].count }
+        if Double(wordChars) / Double(token.count) > 0.5 { return false }
         return shannonEntropy(token) >= 4.0
     }
 
