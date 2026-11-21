@@ -32,6 +32,13 @@ public final class PanelModel: ObservableObject {
     }
     /// 사용자가 검색어를 마지막으로 비운 시각(⌫ 보호용). 열 때의 초기화는 세지 않는다.
     public private(set) var queryClearedAt: Date?
+    /// 날짜 필터. nil이면 전체 기간.
+    @Published public var sinceFilter: DateFilter? = nil {
+        didSet {
+            guard sinceFilter != oldValue else { return }
+            reloadFromTop()
+        }
+    }
     @Published public private(set) var items: [ClipItem] = []
     @Published public private(set) var selectedIndex: Int = 0
     /// 0은 "기록", 1부터는 `boards[i-1]`
@@ -58,7 +65,12 @@ public final class PanelModel: ObservableObject {
 
     /// 필터 메뉴에 쓸 출처 앱 목록(최근 사용 순)
     public func sourceApps() -> [(bundleID: String, name: String)] {
-        (try? store.sourceApps()) ?? []
+        do {
+            return try store.sourceApps()
+        } catch {
+            Self.log.error("출처 앱 목록 읽기 실패: \(String(describing: error), privacy: .public)")
+            return []
+        }
     }
 
     /// 보드 목록과 항목을 저장소에서 다시 읽는다. 선택은 같은 항목(id)을 따라가고,
@@ -79,7 +91,7 @@ public final class PanelModel: ObservableObject {
             if boardIndex > boards.count { boardIndex = 0 }
             let boardID: Int64? = boardIndex == 0 ? nil : boards[boardIndex - 1].id
             let q = SearchQuery(text: query, kind: kindFilter, appBundleID: appFilter,
-                                pinboardID: boardID, limit: Self.displayLimit)
+                                pinboardID: boardID, since: sinceFilter?.since(now: .now), limit: Self.displayLimit)
             items = try store.search(q)
             loadError = nil
         } catch {
@@ -122,6 +134,7 @@ public final class PanelModel: ObservableObject {
         // 값이 바뀌면 각자 reload하므로, 마지막에 한 번 더 읽어 최신 상태를 보장한다
         kindFilter = nil
         appFilter = nil
+        sinceFilter = nil
         query = ""
         queryClearedAt = nil
         reloadFromTop()

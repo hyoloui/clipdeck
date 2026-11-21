@@ -47,6 +47,11 @@ public enum ShortcutFormat {
         symbols(eventModifiers: spec.eventModifiers) + keyName(UInt16(truncatingIfNeeded: spec.keyCode))
     }
 
+    /// 앱 실행 시 전역 단축키 등록이 실패했을 때(다른 앱이 쓰는 중) 한 번 보여줄 안내
+    public static func hotKeyFailureMessage(_ spec: HotKeySpec) -> String {
+        "\(display(spec))를 등록하지 못했습니다 · 메뉴바에서 열 수 있습니다"
+    }
+
     public static func display(_ chord: KeyChord) -> String {
         symbols(eventModifiers: chord.modifiers) + keyName(chord.keyCode)
     }

@@ -46,7 +46,11 @@ private let now = Date(timeIntervalSince1970: 1_000_000)
 
     @Test func classifyOrder() {
         #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText, PasteboardTypes.fileURL], plainText: "a.txt") == .file)
-        #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText, PasteboardTypes.png], plainText: "x") == .image)
+        // 텍스트와 이미지가 함께 오면(스프레드시트 셀) 텍스트, 일반 텍스트가 없을 때만 이미지
+        #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText, PasteboardTypes.png], plainText: "x") == .text)
+        #expect(KindClassifier.classify(utis: [PasteboardTypes.png, PasteboardTypes.plainText], plainText: "https://a.com") == .link)
+        #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText, PasteboardTypes.png], plainText: " \n") == .image)
+        #expect(KindClassifier.classify(utis: [PasteboardTypes.png], plainText: nil) == .image)
         #expect(KindClassifier.classify(utis: [PasteboardTypes.tiff], plainText: nil) == .image)
         #expect(KindClassifier.classify(utis: [PasteboardTypes.color], plainText: nil) == .color)
         #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText], plainText: "https://a.com") == .link)
@@ -55,6 +59,16 @@ private let now = Date(timeIntervalSince1970: 1_000_000)
         #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText], plainText: "ftp://a.com") == .text)
         #expect(KindClassifier.classify(utis: [PasteboardTypes.plainText], plainText: "hello") == .text)
         #expect(KindClassifier.classify(utis: ["com.example.private"], plainText: nil) == nil)
+    }
+
+    /// 스프레드시트 셀: 텍스트로 저장하되 표현은 전부 보관해 붙여넣기에 이미지도 함께 간다
+    @Test func textWithImageIsText() throws {
+        let png = Representation(uti: PasteboardTypes.png, data: Data([1, 2, 3]))
+        let clip = try #require(ClipBuilder.make(representations: [rep(PasteboardTypes.plainText, "42"), png],
+                                                 sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
+        #expect(clip.kind == .text)
+        #expect(clip.plainText == "42")
+        #expect(clip.representations.contains(png))
     }
 
     @Test func privateOnlyIsNil() {

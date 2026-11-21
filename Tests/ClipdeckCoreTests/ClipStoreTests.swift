@@ -225,3 +225,15 @@ private func sha256Hex(_ data: Data) -> String {
     #expect(try store.representation(itemID: id, uti: "public.tiff")?.data == Data([1, 2]))
     #expect(try store.representation(itemID: id, uti: "public.rtf") == nil)
 }
+
+/// 변환할 수 없는 행(알 수 없는 kind, data·blob_path 둘 다 NULL)은 로그만 남기고 건너뛴다(동작 그대로)
+@Test func unreadableRowsAreSkipped() throws {
+    let (store, dir) = try makeTempStore()
+    defer { try? FileManager.default.removeItem(at: dir) }
+    guard case .inserted(let id) = try store.insert(textClip("ok")) else { Issue.record("inserted 아님"); return }
+    try store.db.execute("INSERT INTO items(id, kind, preview, plain_text, content_hash, last_used_at) VALUES (900, 'weird', 'x', 'x', 'h-weird', 1)")
+    try store.db.execute("INSERT INTO item_representations(item_id, uti, data, blob_path) VALUES (?, 'public.rtf', NULL, NULL)", [.int(id)])
+    #expect(try store.search(SearchQuery()).map(\.id) == [id])
+    #expect(try store.item(id: 900) == nil)
+    #expect(try store.representations(itemID: id).map(\.uti) == ["public.utf8-plain-text"])
+}

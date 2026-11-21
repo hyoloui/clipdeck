@@ -21,6 +21,8 @@ private let pasteboardAvailable: Bool = {
         #expect(Array(out.prefix(2)) == reps)
         #expect(out.filter { $0.uti == PasteboardTypes.selfMarker }.count == 1)
         #expect(ClipboardPayload.withSelfMarker(out) == out)
+        // 자체 쓰기 표시 데이터는 Core 한 곳의 정의를 쓴다(앱 붙여넣기와 같은 값)
+        #expect(out.last == Representation(uti: PasteboardTypes.selfMarker, data: PasteboardTypes.selfMarkerData))
     }
 
     /// 시스템 클립보드가 아니라 이름 없는 임시 pasteboard에 쓴다.

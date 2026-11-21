@@ -19,6 +19,7 @@ public enum SecretDetector {
         #"\bxox[abprs]-[A-Za-z0-9-]{10,}"#,
         #"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"#,
         #"\bAIza[0-9A-Za-z_-]{35}"#,
+        #"\bya29\.[0-9A-Za-z_-]{20,}"#, // Google OAuth 액세스 토큰
         #"(?:^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,16384}\.[A-Za-z0-9_-]{8,16384}\.[A-Za-z0-9_-]{8,16384}"#,
         #"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----"#,
     ].joined(separator: "|"))

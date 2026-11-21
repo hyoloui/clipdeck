@@ -7,7 +7,13 @@ extension PanelController {
 
     func showBoardMenu() {
         guard let item = model.selectedItem, let host = hosting else { return }
-        let boards = (try? store.pinboards()) ?? []
+        let boards: [Pinboard]
+        do {
+            boards = try store.pinboards()
+        } catch {
+            Self.log.error("보드 목록 읽기 실패: \(String(describing: error), privacy: .public)")
+            boards = []
+        }
         let menu = NSMenu(title: "보드에 고정")
         if boards.isEmpty {
             menu.addItem(menuItem("새 보드 만들기…", tag: -1))

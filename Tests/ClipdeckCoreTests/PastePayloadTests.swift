@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 @testable import ClipdeckCore
@@ -17,7 +18,8 @@ private func rep(_ uti: String, _ text: String) -> Representation {
         let reps = [rep(PasteboardTypes.plainText, "hi"), rep(PasteboardTypes.rtf, "{rtf}")]
         for plain in [true, false] {
             let out = PastePayload.build(reps, plainTextOnly: plain)
-            #expect(out.last == Representation(uti: PasteboardTypes.selfMarker, data: Data([0])))
+            #expect(out.last == Representation(uti: PasteboardTypes.selfMarker, data: PasteboardTypes.selfMarkerData))
+            #expect(PasteboardTypes.selfMarkerData == Data([0]))
             #expect(out.filter { $0.uti == PasteboardTypes.selfMarker }.count == 1)
         }
         #expect(PastePayload.build(reps, plainTextOnly: false).count == 3)
@@ -38,12 +40,23 @@ private func rep(_ uti: String, _ text: String) -> Representation {
         #expect(out.map(\.uti) == [PasteboardTypes.fileURL, PasteboardTypes.plainText, PasteboardTypes.selfMarker])
     }
 
-    @Test func imageKeptWhenPlainText() {
-        for t in [PasteboardTypes.png, PasteboardTypes.tiff, PasteboardTypes.color] {
+    @Test func colorKeptWhenPlainText() {
+        let reps = [Representation(uti: PasteboardTypes.color, data: Data([1])), rep(PasteboardTypes.plainText, "x"), rep(PasteboardTypes.rtf, "r")]
+        #expect(PastePayload.build(reps, plainTextOnly: true).count == 4)
+    }
+
+    /// 텍스트와 이미지가 함께 있으면(스프레드시트 셀) 일반 텍스트 모드에서 텍스트만 남긴다
+    @Test func imageWithTextFilteredWhenPlainText() {
+        for t in [PasteboardTypes.png, PasteboardTypes.tiff] {
             let reps = [Representation(uti: t, data: Data([1])), rep(PasteboardTypes.plainText, "x"), rep(PasteboardTypes.rtf, "r")]
             let out = PastePayload.build(reps, plainTextOnly: true)
-            #expect(out.count == 4)
+            #expect(out.map(\.uti) == [PasteboardTypes.plainText, PasteboardTypes.selfMarker])
         }
+    }
+
+    @Test func imageWithoutTextKeptWhenPlainText() {
+        let reps = [Representation(uti: PasteboardTypes.tiff, data: Data([1])), rep(PasteboardTypes.rtf, "r")]
+        #expect(Array(PastePayload.build(reps, plainTextOnly: true).dropLast()) == reps)
     }
 
     @Test func groupSplitsFileURLs() {
@@ -71,6 +84,16 @@ private func rep(_ uti: String, _ text: String) -> Representation {
         #expect(PasteGate.decide(frontmostMatches: true, modifiersDown: true, elapsedMs: 100) == .wait)
         #expect(PasteGate.decide(frontmostMatches: false, modifiersDown: false, elapsedMs: 100) == .wait)
     }
+    /// ⌘는 기다리지 않는다(보내는 이벤트가 ⌘V라 ⌘1–9의 ⌘가 눌려 있어도 된다). ⇧·⌥·⌃만 기다린다.
+    @Test func commandAloneDoesNotBlock() {
+        #expect(!PasteGate.modifiersDown([.maskCommand]))
+        #expect(!PasteGate.modifiersDown([]))
+        #expect(!PasteGate.modifiersDown([.maskAlphaShift, .maskNumericPad]))
+        #expect(PasteGate.modifiersDown([.maskShift]))
+        #expect(PasteGate.modifiersDown([.maskCommand, .maskAlternate]))
+        #expect(PasteGate.modifiersDown([.maskControl]))
+    }
+
     @Test func giveUpAfter500ms() {
         #expect(PasteGate.decide(frontmostMatches: true, modifiersDown: true, elapsedMs: 501) == .giveUp)
         #expect(PasteGate.decide(frontmostMatches: false, modifiersDown: false, elapsedMs: 501) == .giveUp)

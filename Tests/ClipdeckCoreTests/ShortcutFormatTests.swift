@@ -3,6 +3,13 @@ import Testing
 
 @Suite struct ShortcutFormatTests {
     // NSEvent.ModifierFlags: shift 131072, control 262144, option 524288, command 1048576
+    /// 실행 시 전역 단축키 등록 실패 안내는 실제 설정된 조합을 쓴다
+    @Test func 등록_실패_안내는_설정된_조합을_쓴다() {
+        #expect(ShortcutFormat.hotKeyFailureMessage(.openPanel) == "⇧⌘V를 등록하지 못했습니다 · 메뉴바에서 열 수 있습니다")
+        #expect(ShortcutFormat.hotKeyFailureMessage(HotKeySpec(keyCode: 9, carbonModifiers: 256 | 2048))
+                == "⌥⌘V를 등록하지 못했습니다 · 메뉴바에서 열 수 있습니다")
+    }
+
     @Test func 이벤트_수정키를_카본_값으로_바꾼다() {
         #expect(HotKeySpec(keyCode: 9, eventModifiers: 1_048_576 | 131_072) == .openPanel)
         #expect(HotKeySpec(keyCode: 9, eventModifiers: 1_048_576 | 524_288).carbonModifiers == 256 | 2048)

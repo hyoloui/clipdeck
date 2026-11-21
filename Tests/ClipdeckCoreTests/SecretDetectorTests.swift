@@ -16,6 +16,7 @@ private let detectCases: [(name: String, text: String)] = [
     ("slack", "xox" + "b-1234-5678-abcd"),
     ("aws", "AK" + "IA" + "Q7LM2XV9RT4KP8ZW"),
     ("google", "AI" + "za" + "Sy" + "Rt4Kp8Zw3Hd6Ns1Bc5Yf0Ge2Ja9Uo7Eq7L"),
+    ("google-oauth", "Authorization: Bearer " + "ya" + "29." + "a0AfH6SM" + body40),
     ("jwt", "ey" + "JhbGciOiJIUzI1NiJ9." + "ey" + "JzdWIiOiIxMjM0NTY3ODkwIn0." + "dBjftJeZ4CVPmB92K27uhbUJU1p1r"),
     ("private-key", "ssh key:\n-----BEGIN " + "OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjE\n-----END OPENSSH PRIVATE KEY-----"),
     ("kv-env", "DB_PASSWORD=hunter2hunter2"),

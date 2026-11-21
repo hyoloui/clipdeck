@@ -82,7 +82,7 @@ struct MCPTab: View {
         pb.clearContents()
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)
-        item.setData(Data("1".utf8), forType: NSPasteboard.PasteboardType(PasteboardTypes.selfMarker))
+        item.setData(PasteboardTypes.selfMarkerData, forType: NSPasteboard.PasteboardType(PasteboardTypes.selfMarker))
         pb.writeObjects([item])
     }
 }

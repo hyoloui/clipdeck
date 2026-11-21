@@ -59,8 +59,7 @@ final class PasteService {
                 if Task.isCancelled { return }
                 elapsed += elapsed == 0 ? PasteGate.minDelayMs : 25
                 let front = NSWorkspace.shared.frontmostApplication?.processIdentifier == app.processIdentifier
-                let mods = !CGEventSource.flagsState(.combinedSessionState)
-                    .intersection([.maskCommand, .maskShift, .maskAlternate, .maskControl]).isEmpty
+                let mods = PasteGate.modifiersDown(CGEventSource.flagsState(.combinedSessionState))
                 switch PasteGate.decide(frontmostMatches: front, modifiersDown: mods, elapsedMs: elapsed) {
                 case .send:
                     Self.sendCommandV()

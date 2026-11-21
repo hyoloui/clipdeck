@@ -124,6 +124,7 @@ struct PanelView: View {
                     .frame(height: Layout.s24)
                 kindMenu
                 appMenu
+                dateMenu
             }
             boardTabs
         }
@@ -131,40 +132,6 @@ struct PanelView: View {
         // 투명 제목 막대(약 28pt)가 검색창 클릭을 가로채지 않도록 그 아래에서 시작한다
         .padding(.top, Layout.s16 + Layout.s16)
         .padding(.bottom, Layout.s8)
-    }
-
-    private static let kinds: [(ItemKind?, String)] = [
-        (nil, "전체"), (.text, "텍스트"), (.link, "링크"), (.image, "이미지"), (.file, "파일"), (.color, "색")
-    ]
-
-    private var kindMenu: some View {
-        let current = Self.kinds.first { $0.0 == model.kindFilter }?.1 ?? "전체"
-        return Menu {
-            ForEach(Self.kinds, id: \.1) { kind, title in
-                Button(title) { model.kindFilter = kind }
-            }
-        } label: {
-            Text(model.kindFilter == nil ? "종류" : current).lineLimit(1)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel("종류 필터, 현재 \(current)")
-    }
-
-    private var appMenu: some View {
-        let apps = presence.apps
-        let current = apps.first { $0.bundleID == model.appFilter }?.name ?? model.appFilter
-        return Menu {
-            Button("전체") { model.appFilter = nil }
-            ForEach(apps, id: \.bundleID) { app in
-                Button(app.name) { model.appFilter = app.bundleID }
-            }
-        } label: {
-            Text(current ?? "앱").lineLimit(1).frame(maxWidth: 96)
-        }
-        .menuStyle(.borderlessButton)
-        .fixedSize()
-        .accessibilityLabel("앱 필터, 현재 \(current ?? "전체")")
     }
 
     private var boardTabs: some View {
@@ -246,7 +213,9 @@ struct PanelView: View {
     }
 
     private var emptyMessage: String {
-        if !model.query.isEmpty || model.kindFilter != nil || model.appFilter != nil { return "찾는 항목이 없습니다" }
+        if !model.query.isEmpty || model.kindFilter != nil || model.appFilter != nil || model.sinceFilter != nil {
+            return "찾는 항목이 없습니다"
+        }
         return model.boardIndex == 0 ? "복사한 내용이 여기에 쌓입니다" : "이 보드는 비어 있습니다"
     }
 

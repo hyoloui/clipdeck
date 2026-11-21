@@ -1,13 +1,14 @@
 import Foundation
 
 public enum KindClassifier {
-    /// 순서: fileURL → png/tiff → color → link → text. 해당 없으면 nil.
+    /// 순서: fileURL → (일반 텍스트가 없을 때만) png/tiff → color → link → text. 해당 없으면 nil.
+    /// 텍스트와 이미지가 함께 오는 복사(스프레드시트 셀)는 텍스트로 본다. 표현은 전부 보관하므로 붙여넣기에는 이미지도 간다.
     public static func classify(utis: [String], plainText: String?) -> ItemKind? {
         if utis.contains(PasteboardTypes.fileURL) { return .file }
-        if utis.contains(PasteboardTypes.png) || utis.contains(PasteboardTypes.tiff) { return .image }
+        let text = plainText.flatMap { $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0 }
+        if text == nil, utis.contains(PasteboardTypes.png) || utis.contains(PasteboardTypes.tiff) { return .image }
         if utis.contains(PasteboardTypes.color) { return .color }
-        guard let text = plainText,
-              !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return nil }
+        guard let text else { return nil }
         return isWebURL(text) ? .link : .text
     }
 

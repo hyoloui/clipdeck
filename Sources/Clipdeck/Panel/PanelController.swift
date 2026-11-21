@@ -14,7 +14,7 @@ final class ClipPanel: NSPanel {
 final class PanelController: NSObject {
     static let log = Logger(subsystem: "local.hyoloui.clipdeck", category: "panel")
 
-    /// 붙여넣기(다음 작업의 PasteService가 연결). nil이면 클립보드에 텍스트만 쓰고 닫는다.
+    /// 붙여넣기(PasteService가 연결한다)
     var onPaste: ((_ itemID: Int64, _ plainText: Bool) -> Void)?
     var onCopyOnly: ((_ itemID: Int64) -> Void)?
     /// 패널을 보이기 직전에 부른다(앞 앱 기억용)
@@ -213,31 +213,14 @@ final class PanelController: NSObject {
     // MARK: 동작
 
     func paste(_ item: ClipItem, plainText: Bool) {
-        if let onPaste {
-            // 앞 앱으로 포커스를 돌려야 하므로 패널을 먼저 닫는다
-            hide(animated: false)
-            onPaste(item.id, plainText)
-        } else {
-            fallbackCopy(item, plainText: plainText)
-            hide(animated: false)
-        }
+        // 앞 앱으로 포커스를 돌려야 하므로 패널을 먼저 닫는다
+        hide(animated: false)
+        onPaste?(item.id, plainText)
     }
 
     func copyOnly(_ item: ClipItem) {
         hide(animated: false)
-        if let onCopyOnly {
-            onCopyOnly(item.id)
-        } else {
-            fallbackCopy(item, plainText: true)
-        }
-    }
-
-    /// PasteService가 연결되기 전의 임시 동작: 텍스트만 클립보드에 쓴다
-    func fallbackCopy(_ item: ClipItem, plainText: Bool) {
-        guard let text = try? store.plainText(itemID: item.id) else { return }
-        let pb = NSPasteboard.general
-        pb.clearContents()
-        pb.setString(text, forType: .string)
+        onCopyOnly?(item.id)
     }
 
     func deleteSelected() {

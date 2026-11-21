@@ -33,3 +33,4 @@ codesign --force --options runtime --sign "$IDENTITY" "$APP"
 
 open "$APP"
 echo "설치 완료: $APP"
+echo "MCP 클라이언트(Claude Code 등)를 다시 시작해야 새 clipdeck-mcp가 쓰입니다"

@@ -16,7 +16,14 @@ private final class PinboardsState: ObservableObject {
         reload()
     }
 
-    func reload() { boards = (try? store.pinboards()) ?? [] }
+    func reload() {
+        do {
+            boards = try store.pinboards()
+        } catch {
+            Self.log.error("보드 목록 읽기 실패: \(String(describing: error), privacy: .public)")
+            boards = []
+        }
+    }
 
     func create() {
         perform { _ = try self.store.createPinboard(name: self.newName, color: nil); self.newName = "" }

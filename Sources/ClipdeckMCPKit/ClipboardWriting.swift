@@ -11,7 +11,7 @@ public enum ClipboardPayload {
     /// MCP가 복사한 텍스트가 기록에 남아 숨김 항목의 존재를 드러내는 일이 없다.
     public static func withSelfMarker(_ reps: [Representation]) -> [Representation] {
         if reps.contains(where: { $0.uti == PasteboardTypes.selfMarker }) { return reps }
-        return reps + [Representation(uti: PasteboardTypes.selfMarker, data: Data([0]))] // 빈 Data가 setData에서 누락될 수 있어 1바이트를 쓴다(샌드박스에서 실제 쓰기는 확인 불가)
+        return reps + [Representation(uti: PasteboardTypes.selfMarker, data: PasteboardTypes.selfMarkerData)]
     }
 }
 

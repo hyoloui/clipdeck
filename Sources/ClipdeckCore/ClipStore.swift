@@ -1,8 +1,10 @@
 import Foundation
 import CryptoKit
+import os
 
 /// 클립보드 항목 저장소. 앱과 MCP 서버가 같은 폴더를 열어 공유한다.
 public final class ClipStore: @unchecked Sendable {
+    static let log = Logger(subsystem: "local.hyoloui.clipdeck", category: "store")
     /// 이후 작업의 extension 파일에서 쓴다.
     let db: Database
     let directory: URL
@@ -138,11 +140,15 @@ public final class ClipStore: @unchecked Sendable {
     }
 
     private func representation(from row: [String: SQLValue]) throws -> Representation? {
-        guard case .text(let uti) = row["uti"] else { return nil }
+        guard case .text(let uti) = row["uti"] else {
+            Self.log.error("표현 행 변환 실패: uti 없음")
+            return nil
+        }
         if case .blob(let data) = row["data"] { return Representation(uti: uti, data: data) }
         if case .text(let path) = row["blob_path"] {
             return Representation(uti: uti, data: try Data(contentsOf: directory.appending(path: path)))
         }
+        Self.log.error("표현 행 변환 실패: data·blob_path 둘 다 없음(\(uti, privacy: .public))")
         return nil
     }
 
@@ -164,7 +170,11 @@ public final class ClipStore: @unchecked Sendable {
 
     static func clipItem(_ row: [String: SQLValue]) -> ClipItem? {
         guard case .int(let id) = row["id"], case .text(let kind) = row["kind"], let k = ItemKind(rawValue: kind),
-              case .text(let hash) = row["content_hash"] else { return nil }
+              case .text(let hash) = row["content_hash"] else {
+            let kind: String = if case .text(let s) = row["kind"] { s } else { "없음" }
+            log.error("항목 행 변환 실패(알 수 없는 kind 또는 빈 값): kind \(kind, privacy: .public)")
+            return nil
+        }
         func text(_ key: String) -> String? { if case .text(let s) = row[key] { s } else { nil } }
         func double(_ key: String) -> Double { if case .double(let d) = row[key] { d } else { 0 } }
         func int(_ key: String) -> Int { if case .int(let i) = row[key] { Int(i) } else { 0 } }

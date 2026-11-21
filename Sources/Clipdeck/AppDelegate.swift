@@ -42,7 +42,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         panel.onPaste = { id, plain in paste.paste(itemID: id, plainText: plain) }
         panel.onCopyOnly = { id in paste.copyOnly(itemID: id) }
-        hotKey = GlobalHotKey(spec: settings.load().hotKey) { [weak panel] in panel?.toggle() }
+        let hotKeySpec = settings.load().hotKey
+        hotKey = GlobalHotKey(spec: hotKeySpec) { [weak panel] in panel?.toggle() }
+        if hotKey?.isRegistered == false {
+            ToastWindow.shared.show(ShortcutFormat.hotKeyFailureMessage(hotKeySpec))
+        }
 
         let model = SettingsModel(store: store, settingsStore: settings)
         model.apply = { [weak self] new, old in

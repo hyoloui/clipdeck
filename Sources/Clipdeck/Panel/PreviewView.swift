@@ -1,6 +1,7 @@
 import AppKit
 import ClipdeckCore
 import SwiftUI
+import os
 
 enum PreviewContent {
     case text(String, monospaced: Bool)
@@ -15,6 +16,7 @@ enum PreviewContent {
 /// 선택 항목의 미리보기 내용. 보여줄 항목이 바뀔 때 한 번 읽어 보관하고, 화면(`body`)은 보관한 값만 그린다.
 @MainActor
 final class PreviewLoader: ObservableObject {
+    private static let log = Logger(subsystem: "local.hyoloui.clipdeck", category: "preview")
     static let textLimit = 2000
     /// 미리보기 이미지 긴 변의 상한(pt). 실제 픽셀 수는 화면 배율을 곱한다.
     static let imageMaxPoints: CGFloat = 800
@@ -41,18 +43,28 @@ final class PreviewLoader: ObservableObject {
     /// 패널을 닫을 때 보관한 미리보기(큰 이미지 포함)를 놓는다
     func clear() { loaded = nil }
 
+    /// 실패하면 로그를 남기고 nil(화면은 기존처럼 대체 내용을 보여준다)
+    private func attempt<T>(_ what: String, _ id: Int64, _ body: () throws -> T?) -> T? {
+        do { return try body() } catch {
+            Self.log.error("미리보기 읽기 실패(\(what, privacy: .public), item \(id)): \(String(describing: error), privacy: .public)")
+            return nil
+        }
+    }
+
     private func read(_ item: ClipItem) -> (content: PreviewContent, bytes: Int) {
         switch item.kind {
         case .text, .link:
-            let full = (try? store.plainText(itemID: item.id)) ?? item.preview
+            let full = attempt("텍스트", item.id) { try store.plainText(itemID: item.id) } ?? item.preview
             let head = String(full.prefix(Self.textLimit))
             // 링크·일반 문장은 본문 글꼴, 코드처럼 보이는 여러 줄 텍스트만 고정폭
             let mono = item.kind == .text && Self.looksLikeCode(head)
             return (.text(head, monospaced: mono), full.utf8.count)
         case .image:
             // png 또는 tiff 표현 하나만 읽고, 미리보기 영역에 맞춘 축소본만 보관한다
-            let rep = (try? store.representation(itemID: item.id, uti: PasteboardTypes.png))
-                ?? (try? store.representation(itemID: item.id, uti: PasteboardTypes.tiff))
+            let rep = attempt("이미지", item.id) {
+                try store.representation(itemID: item.id, uti: PasteboardTypes.png)
+                    ?? store.representation(itemID: item.id, uti: PasteboardTypes.tiff)
+            }
             guard let rep else { return (.empty, 0) }
             let scale = NSScreen.screens.map(\.backingScaleFactor).max() ?? 2
             let side = min(max(Layout.panelWidth - Layout.listWidth, Layout.panelHeight), Self.imageMaxPoints)
@@ -60,12 +72,14 @@ final class PreviewLoader: ObservableObject {
             let image = NSImage(cgImage: cg, size: NSSize(width: CGFloat(cg.width) / scale, height: CGFloat(cg.height) / scale))
             return (.image(image), rep.data.count)
         case .file:
-            let names = ((try? store.plainText(itemID: item.id)) ?? item.preview)
+            let names = (attempt("파일", item.id) { try store.plainText(itemID: item.id) } ?? item.preview)
                 .split(separator: "\n").map(String.init)
             return (.files(names), 0)
         case .color:
-            let reps = (try? store.representations(itemID: item.id)) ?? []
-            let color = reps.first.flatMap { try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: $0.data) }
+            let reps = attempt("색", item.id) { try store.representations(itemID: item.id) } ?? []
+            let color = reps.first.flatMap { r in
+                attempt("색 해석", item.id) { try NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: r.data) }
+            }
             return (.color(color, hex: item.preview), 0)
         }
     }
