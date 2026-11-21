@@ -14,23 +14,20 @@ public final class PanelModel: ObservableObject {
         didSet {
             guard query != oldValue else { return }
             if query.isEmpty { queryClearedAt = Date() }
-            selectedIndex = 0
-            reload()
+            reloadFromTop()
         }
     }
     @Published public var kindFilter: ItemKind? = nil {
         didSet {
             guard kindFilter != oldValue else { return }
-            selectedIndex = 0
-            reload()
+            reloadFromTop()
         }
     }
     /// 출처 앱 번들 ID
     @Published public var appFilter: String? = nil {
         didSet {
             guard appFilter != oldValue else { return }
-            selectedIndex = 0
-            reload()
+            reloadFromTop()
         }
     }
     /// 사용자가 검색어를 마지막으로 비운 시각(⌫ 보호용). 열 때의 초기화는 세지 않는다.
@@ -64,9 +61,19 @@ public final class PanelModel: ObservableObject {
         (try? store.sourceApps()) ?? []
     }
 
-    /// 보드 목록과 항목을 저장소에서 다시 읽는다. 선택은 범위 안으로만 보정한다.
-    /// 실패하면 목록을 비우고 `loadError`를 채운다.
+    /// 보드 목록과 항목을 저장소에서 다시 읽는다. 선택은 같은 항목(id)을 따라가고,
+    /// 그 항목이 없어졌으면 가장 가까운 순번으로 보정한다. 실패하면 목록을 비우고 `loadError`를 채운다.
     public func reload() {
+        load(keeping: selectedItem?.id)
+    }
+
+    /// 검색어·필터·보드가 바뀌었을 때: 선택을 맨 위로 돌리고 다시 읽는다
+    private func reloadFromTop() {
+        selectedIndex = 0
+        load(keeping: nil)
+    }
+
+    private func load(keeping selectedID: Int64?) {
         do {
             boards = try store.pinboards()
             if boardIndex > boards.count { boardIndex = 0 }
@@ -80,7 +87,11 @@ public final class PanelModel: ObservableObject {
             items = []
             loadError = String(describing: error)
         }
-        selectedIndex = items.isEmpty ? 0 : min(selectedIndex, items.count - 1)
+        if let selectedID, let i = items.firstIndex(where: { $0.id == selectedID }) {
+            selectedIndex = i
+        } else {
+            selectedIndex = items.isEmpty ? 0 : min(selectedIndex, items.count - 1)
+        }
     }
 
     public func moveSelection(_ delta: Int) {
@@ -98,8 +109,7 @@ public final class PanelModel: ObservableObject {
         reload()
         guard (0...boards.count).contains(index) else { return }
         boardIndex = index
-        selectedIndex = 0
-        reload()
+        reloadFromTop()
     }
 
     public func selectNextBoard() { switchBoard(by: 1) }
@@ -114,14 +124,13 @@ public final class PanelModel: ObservableObject {
         appFilter = nil
         query = ""
         queryClearedAt = nil
-        reload()
+        reloadFromTop()
     }
 
     private func switchBoard(by step: Int) {
         reload()
         let count = boards.count + 1
         boardIndex = ((boardIndex + step) % count + count) % count
-        selectedIndex = 0
-        reload()
+        reloadFromTop()
     }
 }

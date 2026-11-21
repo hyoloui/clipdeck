@@ -35,7 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         panelController = panel
         let paste = PasteService(store: store, settings: settings.load())
         pasteService = paste
-        panel.onWillShow = { paste.rememberFrontmostApp() }
+        // 방금 복사한 항목이 다음 틱(최대 0.6초)을 기다리지 않고 패널에 보이게 감시기를 한 번 돌린다
+        panel.onWillShow = { [weak self] in
+            paste.rememberFrontmostApp()
+            self?.monitor?.checkNow()
+        }
         panel.onPaste = { id, plain in paste.paste(itemID: id, plainText: plain) }
         panel.onCopyOnly = { id in paste.copyOnly(itemID: id) }
         hotKey = GlobalHotKey(spec: settings.load().hotKey) { [weak panel] in panel?.toggle() }
@@ -56,7 +60,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = StatusItemController(store: store, settings: settings)
         statusItem?.onOpen = { [weak panel] in panel?.toggle() }
         statusItem?.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }
-        monitor = PasteboardMonitor(store: store, settings: settings, onCapture: {})
+        monitor = PasteboardMonitor(store: store, settings: settings, onCapture: { [weak panel] in panel?.reloadIfOpen() })
         monitor?.start()
 
         dbObserver = DBChangeObserver { [weak panel] in panel?.reloadIfOpen() }

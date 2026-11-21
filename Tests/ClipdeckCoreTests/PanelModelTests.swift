@@ -135,6 +135,40 @@ import Foundation
         #expect(model.queryClearedAt == nil)
     }
 
+    /// 다시 읽을 때 선택은 순번이 아니라 항목 id를 따라간다
+    @Test func reloadKeepsSelectedItemID() throws {
+        let (store, model, ids, dir) = try seeded(["a", "b", "c"])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        model.moveSelection(1) // 목록 [c, b, a]에서 b
+        #expect(model.selectedItem?.id == ids[1])
+        _ = try store.insert(textClip("new"), now: Date(timeIntervalSince1970: 5000)) // 맨 위에 새 항목
+        model.reload()
+        #expect(model.items.first?.preview == "new")
+        #expect(model.selectedItem?.id == ids[1])
+        #expect(model.selectedIndex == 2)
+    }
+
+    /// 선택한 항목이 사라지면 가장 가까운 순번을 고른다
+    @Test func reloadFallsBackToNearestIndex() throws {
+        let (store, model, ids, dir) = try seeded(["a", "b", "c"])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        model.moveSelection(2) // a
+        try store.delete(id: ids[0])
+        model.reload()
+        #expect(model.selectedIndex == 1)
+        #expect(model.selectedItem?.id == ids[1])
+    }
+
+    /// 검색어·필터가 바뀌면 여전히 맨 위로 돌아간다
+    @Test func filterChangeStillResetsToTop() throws {
+        let (_, model, _, dir) = try seeded(["apple 1", "apple 2", "apple 3"])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        model.moveSelection(1) // apple 2
+        model.query = "app" // 셋 다 남는다
+        #expect(model.selectedIndex == 0)
+        #expect(model.selectedItem?.preview == "apple 3")
+    }
+
     @Test func loadErrorOnFailure() throws {
         let (store, dir) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: dir) }
