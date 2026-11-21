@@ -18,9 +18,25 @@ public enum SecretDetector {
         #"\bxox[abprs]-[A-Za-z0-9-]{10,}"#,
         #"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"#,
         #"\bAIza[0-9A-Za-z_-]{35}"#,
-        #"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"#,
+        #"(?:^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,16384}\.[A-Za-z0-9_-]{8,16384}\.[A-Za-z0-9_-]{8,16384}"#,
         #"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----"#,
     ].joined(separator: "|"))
+
+    /// JWT 세 조각 하나의 최대 길이(그룹 클레임이 많은 payload도 덮는다)
+    private static let jwtPartMax = 16384
+
+    // 접두사 정규식의 JWT는 앞에 `-`가 붙으면 시작점으로 보지 않는다(`-eyJ` 반복 입력에서 시작점마다 다시 훑는 것을 막으려고).
+    // 그래서 `x-eyJ…`, `--eyJ…`는 토큰 단위 보조 검사가 잡는다: 토큰에서 첫 `eyJ` 위치 한 곳만 보며, 토큰당 선형이다.
+    nonisolated(unsafe) private static let jwtAtStart = try! Regex(
+        "^eyJ[A-Za-z0-9_-]{8,\(jwtPartMax)}\\.[A-Za-z0-9_-]{8,\(jwtPartMax)}\\.[A-Za-z0-9_-]{8,\(jwtPartMax)}")
+
+    private static func hasEmbeddedJWT(_ token: Substring) -> Bool {
+        guard let r = token.range(of: "eyJ") else { return false }
+        // 앞 16384자 안에서 찾은 위치부터, JWT 세 조각 길이만큼만 본다
+        guard token.distance(from: token.startIndex, to: r.lowerBound) <= jwtPartMax else { return false }
+        let tail = token[r.lowerBound...].prefix(3 * jwtPartMax + 8)
+        return tail.prefixMatch(of: jwtAtStart) != nil
+    }
 
     // 키-값 형태. 값은 따옴표를 뺀 본문(3번째 캡처)만 판정에 쓴다.
     nonisolated(unsafe) private static let keyValue = try! Regex(
@@ -36,7 +52,7 @@ public enum SecretDetector {
 
         if scanned.firstMatch(of: prefixed) != nil { return true }
         for m in scanned.matches(of: keyValue) where isRealSecretValue(m) { return true }
-        return scanned.split(whereSeparator: \.isWhitespace).contains { isHighEntropy($0) }
+        return scanned.split(whereSeparator: \.isWhitespace).contains { hasEmbeddedJWT($0) || isHighEntropy($0) }
     }
 
     /// `token: String`, `API_KEY=${API_KEY}`처럼 값이 아니라 타입·참조인 경우를 거른다
