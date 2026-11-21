@@ -93,8 +93,7 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         let png = makePNG(width: 2048, height: 1024)
         let clip = try #require(ClipBuilder.make(representations: [Representation(uti: PasteboardTypes.png, data: png)],
                                                  sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
-        let idopt = try store.mcpInsert(clip)
-        let id = try #require(idopt)
+        let id = try insertClip(store, clip)
         let r = makeRegistry(store).call(name: "get_item", arguments: ["id": n(id)])
         guard case .image(let b64, let mime)? = r.content.first else { Issue.record("이미지 콘텐츠 아님"); return }
         #expect(mime == "image/png")
@@ -109,8 +108,7 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         let png = makePNG(width: 300, height: 200)
         let img = try #require(ClipBuilder.make(representations: [Representation(uti: PasteboardTypes.png, data: png)],
                                                 sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
-        let imgIDopt = try store.mcpInsert(img)
-        let imgID = try #require(imgIDopt)
+        let imgID = try insertClip(store, img)
         let reg = makeRegistry(store)
         guard case .image(let b64, _)? = reg.call(name: "get_item", arguments: ["id": n(imgID)]).content.first else {
             Issue.record("이미지 콘텐츠 아님"); return
@@ -122,8 +120,7 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         let file = try #require(ClipBuilder.make(
             representations: [Representation(uti: PasteboardTypes.fileURL, data: Data("file:///tmp/a%20b.txt".utf8))],
             sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
-        let fileIDopt = try store.mcpInsert(file)
-        let fileID = try #require(fileIDopt)
+        let fileID = try insertClip(store, file)
         #expect(text(reg.call(name: "get_item", arguments: ["id": n(fileID)])) == "/tmp/a b.txt")
     }
 
@@ -246,9 +243,10 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         }
     }
 
-    @Test func noDeleteTool() {
-        let reg = ToolRegistry(store: try! ClipStore(directory: FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)),
-                               clipboard: FakeClipboard(), notifyChange: {})
+    @Test func noDeleteTool() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let reg = makeRegistry(store)
         let names = reg.definitions.map(\.name)
         #expect(names.count == 8)
         for name in names {
@@ -268,7 +266,74 @@ private func n(_ v: Int64) -> JSONValue { .number(Double(v)) }
         #expect(try store.mcpRepresentations(itemID: hidden) == nil)
         #expect(try store.mcpPlainText(itemID: hidden) == nil)
         #expect(try store.mcpSearch(SearchQuery(text: "secret")).isEmpty)
-        let clip = textClip("another secret thing", hidden: true)
-        #expect(try store.mcpInsert(clip) == nil)
+    }
+
+    @Test func createTextDoesNotProbeHidden() throws {
+        let note = "meeting notes for tuesday"
+        var shapes: [String] = []
+        for withHidden in [false, true] {
+            let (store, dir) = try makeTempStore()
+            defer { try? FileManager.default.removeItem(at: dir) }
+            var hiddenID: Int64?
+            var before: ClipItem?
+            if withHidden {
+                // 숨김 앱에서 실제 캡처 경로(ClipBuilder)로 만든 행: content_hash가 텍스트의 SHA256이다
+                let captured = try #require(ClipBuilder.make(
+                    representations: [Representation(uti: PasteboardTypes.plainText, data: Data(note.utf8))],
+                    sourceAppBundleID: "com.example.pm", sourceAppName: "PM",
+                    policy: CapturePolicy(mcpHiddenBundleIDs: ["com.example.pm"])))
+                #expect(captured.mcpHidden)
+                let id = try insertClip(store, captured)
+                hiddenID = id
+                before = try store.item(id: id)
+            }
+            let reg = makeRegistry(store)
+            let r = reg.call(name: "create_text_item", arguments: ["text": .string(note)])
+            let body = text(r)
+            shapes.append("\(r.isError)|\(r.content.count)|\(body.hasPrefix("{\"id\":"))")
+            if let hiddenID {
+                let after = try store.item(id: hiddenID)
+                #expect(after?.lastUsedAt == before?.lastUsedAt)
+                #expect(after?.useCount == before?.useCount)
+                let listed = ids(reg.call(name: "list_recent", arguments: [:]))
+                #expect(listed.count == 1 && !listed.contains(hiddenID))
+            }
+        }
+        #expect(shapes[0] == shapes[1])
+        #expect(shapes[0] == "false|1|true")
+    }
+
+    @Test func createTextTwiceBumpsOnlyOwnRow() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let reg = makeRegistry(store)
+        let a = reg.call(name: "create_text_item", arguments: ["text": .string("same text here")])
+        let b = reg.call(name: "create_text_item", arguments: ["text": .string("same text here")])
+        #expect(text(a) == text(b))
+        #expect(try store.search(SearchQuery()).count == 1)
+    }
+
+    @Test func secretWithPinboardSaysNotAdded() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let board = try store.createPinboard(name: "x", color: nil)
+        let reg = makeRegistry(store)
+        let r = reg.call(name: "create_text_item", arguments: ["text": .string(fakeAPIKey), "pinboard": .string("x")])
+        #expect(text(r).contains("보드에는 추가하지 않음"))
+        let boards = try store.pinboards()
+        #expect(boards.first { $0.id == board }?.itemCount == 0)
+    }
+
+    @Test func searchQueryOptionalAndBundleIDListed() throws {
+        let (store, dir) = try makeTempStore()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        try insertText(store, "some visible entry")
+        let reg = makeRegistry(store)
+        let search = try #require(reg.definitions.first { $0.name == "search_items" })
+        guard case .object(let o) = search.inputSchema, case .array(let req)? = o["required"] else { Issue.record("schema"); return }
+        #expect(!req.contains(.string("query")))
+        #expect(search.description.contains("생략"))
+        #expect(!reg.call(name: "search_items", arguments: [:]).isError)
+        #expect(text(reg.call(name: "list_recent", arguments: [:])).contains("\"app_bundle_id\":\"com.example.app\""))
     }
 }

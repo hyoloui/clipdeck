@@ -71,3 +71,10 @@ func ids(_ r: ToolResult) -> [Int64] {
           case .array(let items)? = try? JSONDecoder().decode(JSONValue.self, from: data) else { return [] }
     return items.compactMap { if case .object(let o) = $0 { o["id"]?.intValue } else { nil } }
 }
+
+/// 캡처 경로처럼 NewClip을 그대로 넣고 id를 돌려준다.
+func insertClip(_ store: ClipStore, _ clip: NewClip) throws -> Int64 {
+    switch try store.insert(clip) {
+    case .inserted(let id), .bumped(let id): id
+    }
+}

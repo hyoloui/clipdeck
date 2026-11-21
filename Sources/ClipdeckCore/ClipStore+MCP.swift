@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// MCP 도구가 쓰는 조회는 전부 이 파일에만 둔다. `mcp_hidden = 1` 항목은 어느 함수에서도 나오지 않는다.
@@ -31,21 +32,40 @@ extension ClipStore {
         }
     }
 
+    /// 숨김 확인과 읽기를 한 트랜잭션으로 한다.
     public func mcpRepresentations(itemID: Int64) throws -> [Representation]? {
-        guard try mcpItem(id: itemID) != nil else { return nil }
-        return try representations(itemID: itemID)
+        try db.transaction {
+            guard try mcpItem(id: itemID) != nil else { return nil }
+            return try representations(itemID: itemID)
+        }
     }
 
     public func mcpPlainText(itemID: Int64) throws -> String? {
-        guard try mcpItem(id: itemID) != nil else { return nil }
-        return try plainText(itemID: itemID)
+        let rows = try db.query("SELECT plain_text FROM items WHERE id = ? AND mcp_hidden = 0", [.int(itemID)])
+        guard let row = rows.first else { return nil }
+        if case .text(let s) = row["plain_text"] { return s }
+        return nil
     }
 
-    /// 저장하고, 결과 항목이 MCP에 보이면 id를, 숨김이면 nil을 돌려준다(이미 숨겨진 항목과 내용이 같을 때도 nil).
-    public func mcpInsert(_ clip: NewClip) throws -> Int64? {
+    public enum MCPCreateResult: Equatable, Sendable {
+        case created(id: Int64)
+        /// 탐지기가 비밀값으로 판정해 저장은 했지만 MCP에서는 숨겼다.
+        case hidden
+        case rejected
+    }
+
+    /// MCP가 만든 텍스트 항목을 저장한다. 캡처된 항목과 hash 공간을 분리해(`SHA256("mcp\0" + 텍스트)`)
+    /// 캡처된 행(숨김 포함)을 절대 건드리지 않는다. 응답은 호출자 텍스트의 탐지기 판정으로만 정해지므로,
+    /// 저장소에 같은 내용의 숨김 항목이 있는지 알아낼 수 없다.
+    public func mcpCreateText(_ text: String) throws -> MCPCreateResult {
+        guard var clip = ClipBuilder.make(
+            representations: [Representation(uti: PasteboardTypes.plainText, data: Data(text.utf8))],
+            sourceAppBundleID: "local.hyoloui.clipdeck.mcp", sourceAppName: "MCP",
+            policy: CapturePolicy(detectSecrets: true)) else { return .rejected }
+        clip.contentHash = SHA256.hash(data: Data(("mcp\u{0}" + text).utf8)).map { String(format: "%02x", $0) }.joined()
         let id: Int64 = switch try insert(clip) {
         case .inserted(let id), .bumped(let id): id
         }
-        return try mcpItem(id: id)?.id
+        return clip.mcpHidden ? .hidden : .created(id: id)
     }
 }

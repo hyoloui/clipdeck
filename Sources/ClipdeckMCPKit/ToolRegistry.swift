@@ -40,7 +40,6 @@ public final class ToolRegistry {
     static let maxTextBytes = 100 * 1024
     static let maxImagePixels = 1024
     static let previewChars = 200
-    static let mcpBundleID = "local.hyoloui.clipdeck.mcp"
     /// 항목이 없을 때의 문구. 숨김 항목도 같은 경로로 이 문구가 나온다.
     static let itemNotFound = "항목 없음: 해당 id의 항목을 찾을 수 없습니다 (item not found)"
     static let boardNotFound = "보드 없음: 해당 Pinboard를 찾을 수 없습니다 (pinboard not found)"
@@ -63,14 +62,14 @@ public final class ToolRegistry {
         ]
         return [
             ToolDefinition(name: "search_items",
-                description: "클립보드 기록을 검색한다. 사용자가 \"아까 복사한 거\", \"클립보드에서 찾아줘\"라고 할 때 쓴다. / Search clipboard history by text. Use when the user refers to something they copied earlier.",
+                description: "클립보드 기록을 검색한다(query를 생략하면 최근 항목). 사용자가 \"아까 복사한 거\", \"클립보드에서 찾아줘\"라고 할 때 쓴다. / Search clipboard history by text (omit query for recent items). Use when the user refers to something they copied earlier.",
                 inputSchema: Self.schema([
-                    ("query", "string", "검색어 / search text"),
+                    ("query", "string", "검색어, 생략하면 최근 항목 / search text, omit for recent items"),
                     ("kind", "string", "text, link, image, file, color 중 하나 / one of text, link, image, file, color"),
-                    ("app", "string", "출처 앱 번들 ID / source app bundle ID"),
+                    ("app", "string", "출처 앱 번들 ID(결과의 app_bundle_id 값) / source app bundle ID (the result field app_bundle_id)"),
                     ("pinboard", "integer|string", "Pinboard id 또는 이름 / pinboard id or name"),
                     ("since", "string", "이 시각 이후(ISO8601, 예 2026-11-21T00:00:00Z) / only items used since (ISO8601)"),
-                ] + listProps, required: ["query"])),
+                ] + listProps, required: [])),
             ToolDefinition(name: "list_recent",
                 description: "최근에 쓴 클립보드 항목을 최신순으로 나열한다. / List the most recently used clipboard items.",
                 inputSchema: Self.schema([("kind", "string", "text, link, image, file, color 중 하나 / one of the kinds")] + listProps, required: [])),
@@ -181,6 +180,7 @@ public final class ToolRegistry {
                 "kind": .string(item.kind.rawValue),
                 "preview": .string(String(item.preview.prefix(previewChars))),
                 "app": (item.sourceAppName ?? item.sourceAppBundleID).map { .string($0) } ?? .null,
+                "app_bundle_id": item.sourceAppBundleID.map { .string($0) } ?? .null,
                 "last_used_at": .string(formatter.string(from: item.lastUsedAt)),
             ])
         }))
@@ -275,17 +275,18 @@ public final class ToolRegistry {
     private func createTextItem(_ args: Args) throws -> ToolResult {
         let text = try Self.validText(try args.requiredString("text"))
         let board = try args["pinboard"].map { try resolveBoard($0) }
-        guard let clip = ClipBuilder.make(
-            representations: [Representation(uti: PasteboardTypes.plainText, data: Data(text.utf8))],
-            sourceAppBundleID: Self.mcpBundleID, sourceAppName: "MCP", policy: CapturePolicy(detectSecrets: true))
-        else { throw ToolError("저장할 수 있는 텍스트가 아닙니다 (text cannot be saved)") }
-        guard let id = try store.mcpInsert(clip) else {
+        switch try store.mcpCreateText(text) {
+        case .rejected:
+            throw ToolError("저장할 수 있는 텍스트가 아닙니다 (text cannot be saved)")
+        case .hidden:
             notifyChange()
-            return ToolResult(content: [.text("저장했지만 비밀값으로 판정되어 MCP에서 숨김 처리됨 (saved, but hidden from MCP as a suspected secret)")])
+            let note = board == nil ? "" : " 보드에는 추가하지 않음 (not added to the pinboard)."
+            return ToolResult(content: [.text("저장했지만 비밀값으로 판정되어 MCP에서 숨김 처리됨 (saved, but hidden from MCP as a suspected secret)." + note)])
+        case .created(let id):
+            if let board { try store.add(itemID: id, toPinboard: board.id) }
+            notifyChange()
+            return try Self.json(.object(["id": .number(Double(id))]))
         }
-        if let board { try store.add(itemID: id, toPinboard: board.id) }
-        notifyChange()
-        return try Self.json(.object(["id": .number(Double(id))]))
     }
 
     private func addToPinboard(_ args: Args) throws -> ToolResult {
