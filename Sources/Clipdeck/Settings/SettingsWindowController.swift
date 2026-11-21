@@ -44,7 +44,7 @@ final class SettingsWindowController: NSObject, NSWindowDelegate {
 
     func windowWillClose(_ notification: Notification) {
         model.isWindowVisible = false
-        if let app = previousApp, !app.isTerminated { app.activate() }
+        if let app = previousApp, !app.isTerminated { app.activate() } else { NSApp.hide(nil) } // 되돌릴 앱이 없으면 Clipdeck을 앞에서 내린다
         previousApp = nil
     }
 

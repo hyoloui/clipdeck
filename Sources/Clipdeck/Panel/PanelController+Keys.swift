@@ -43,6 +43,12 @@ extension PanelController {
         let flags = event.modifierFlags.intersection([.shift, .control, .option, .command])
         // 보드 이름 시트(별도 창)의 입력란에도 편집 단축키를 적용한다
         if let sheet = panel.attachedSheet, event.window === sheet {
+            // 메인 메뉴로 넘어가면 앱이 종료되거나 다른 창이 닫힐 수 있다: ⌘Q 무시, ⌘W는 시트 취소
+            if flags == .command, event.keyCode == 12 { return nil }
+            if flags == .command, event.keyCode == 13 {
+                panel.endSheet(sheet, returnCode: .alertSecondButtonReturn)
+                return nil
+            }
             return performEdit(event, flags, sheet.firstResponder as? NSTextView) ? nil : event
         }
         guard event.window === panel else { return event }

@@ -36,6 +36,7 @@ struct ShortcutsTab: View {
     private func recordHotKey(_ code: UInt16, _ mods: UInt) -> String? {
         let spec = HotKeySpec(keyCode: code, eventModifiers: mods)
         guard spec.hasRequiredModifier else { return "⌘, ⌃, ⌥ 중 하나를 포함해야 합니다" }
+        if let reason = PanelKeyBindings.fixedKeyConflict(for: spec) { return reason }
         if let slot = model.settings.panelKeys.slot(using: spec) {
             return "\(ShortcutFormat.display(spec))은(는) 패널 안의 '\(slot.label)' 키와 같습니다."
         }

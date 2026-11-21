@@ -1,4 +1,5 @@
 import ClipdeckCore
+import Combine
 import SwiftUI
 
 /// 손쉬운 사용 권한 상태. 탭이 보이는 동안 1초 간격으로 갱신한다.
@@ -6,6 +7,16 @@ import SwiftUI
 private final class AccessibilityStatus: ObservableObject {
     @Published var trusted = AccessibilityPermission.isTrusted
     private var timer: Timer?
+    private var visibility: AnyCancellable?
+
+    /// 설정 창이 보이는 동안만 돈다. 뷰 수명과 무관하게 이 객체가 직접 구독한다.
+    init(isWindowVisible: Published<Bool>.Publisher) {
+        visibility = isWindowVisible.sink { [weak self] visible in
+            MainActor.assumeIsolated { visible ? self?.start() : self?.stop() }
+        }
+    }
+
+    deinit { MainActor.assumeIsolated { timer?.invalidate() } }
 
     func start() {
         trusted = AccessibilityPermission.isTrusted
@@ -26,7 +37,12 @@ private final class AccessibilityStatus: ObservableObject {
 
 struct PasteTab: View {
     @ObservedObject var model: SettingsModel
-    @StateObject private var access = AccessibilityStatus()
+    @StateObject private var access: AccessibilityStatus
+
+    init(model: SettingsModel) {
+        self.model = model
+        _access = StateObject(wrappedValue: AccessibilityStatus(isWindowVisible: model.$isWindowVisible))
+    }
 
     var body: some View {
         Form {
@@ -47,6 +63,5 @@ struct PasteTab: View {
             }
         }
         .formStyle(.grouped)
-        .onReceive(model.$isWindowVisible) { $0 ? access.start() : access.stop() }
     }
 }

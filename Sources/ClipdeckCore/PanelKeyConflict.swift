@@ -69,6 +69,13 @@ extension PanelKeyBindings {
         return nil
     }
 
+    /// 전역 단축키가 패널 고정 키와 같으면 패널 안에서 그 동작이 막히므로 이유를 돌려준다
+    public static func fixedKeyConflict(for spec: HotKeySpec) -> String? {
+        let chord = KeyChord(keyCode: UInt16(truncatingIfNeeded: spec.keyCode), modifiers: spec.eventModifiers)
+        guard let fixed = fixedKeys.first(where: { $0.0 == chord }) else { return nil }
+        return "\(ShortcutFormat.display(spec))은(는) 패널의 '\(fixed.1)' 키와 겹칩니다."
+    }
+
     /// 전역 단축키로 `spec`을 쓰려 할 때 같은 조합을 쓰는 패널 키가 있으면 그 슬롯
     public func slot(using spec: HotKeySpec) -> PanelKeySlot? {
         PanelKeySlot.allCases.first {

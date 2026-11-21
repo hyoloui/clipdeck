@@ -72,4 +72,16 @@ import Testing
         #expect(b.conflict(for: .nextBoard, proposing: KeyChord(keyCode: 124, modifiers: 0)) != nil)
         #expect(b.conflict(for: .nextBoard, proposing: KeyChord(keyCode: 124, modifiers: option)) == nil)
     }
+
+    @Test func 전역_단축키는_패널_고정_키와_같으면_동작_이름을_알려_준다() {
+        func spec(_ code: UInt16, _ mods: UInt) -> HotKeySpec { HotKeySpec(keyCode: code, eventModifiers: mods) }
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(35, cmd))?.contains("고정") == true)   // ⌘P
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(4, cmd))?.contains("MCP") == true)     // ⌘H
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(43, cmd))?.contains("설정") == true)    // ⌘,
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(18, cmd))?.contains("바로") == true)    // ⌘1
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(13, cmd))?.contains("닫기") == true)    // ⌘W
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(9, cmd))?.contains("붙여넣기") == true)  // ⌘V
+        #expect(PanelKeyBindings.fixedKeyConflict(for: .openPanel) == nil)
+        #expect(PanelKeyBindings.fixedKeyConflict(for: spec(35, cmd | option)) == nil)
+    }
 }
