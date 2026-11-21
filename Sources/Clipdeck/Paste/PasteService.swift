@@ -10,6 +10,9 @@ final class PasteService {
     private let store: ClipStore
     var settings: AppSettings
     private var previousApp: NSRunningApplication?
+    /// 패널을 연 순간 Clipdeck 자신(설정 창 등)이 앞에 있었으면 true. 기억한 앱이 화면에 없는 예전 앱일 수 있어
+    /// 바로 붙여넣지 않고 클립보드에만 복사한다.
+    private(set) var suppressDirectPaste = false
     private var pasteTask: Task<Void, Never>?
 
     init(store: ClipStore, settings: AppSettings) {
@@ -20,9 +23,9 @@ final class PasteService {
     /// 패널을 열기 직전에 부른다. Clipdeck 자신이면 이전 값을 유지한다.
     func rememberFrontmostApp() {
         pasteTask?.cancel()
-        guard let app = NSWorkspace.shared.frontmostApplication,
-              app.processIdentifier != ProcessInfo.processInfo.processIdentifier else { return }
-        previousApp = app
+        guard let app = NSWorkspace.shared.frontmostApplication else { return }
+        suppressDirectPaste = app.processIdentifier == ProcessInfo.processInfo.processIdentifier
+        if !suppressDirectPaste { previousApp = app }
     }
 
     func copyOnly(itemID: Int64) {
@@ -33,7 +36,7 @@ final class PasteService {
     func paste(itemID: Int64, plainText: Bool) {
         pasteTask?.cancel()
         guard writeToPasteboard(itemID: itemID, plainText: plainText || settings.alwaysPlainText) else { return }
-        guard settings.pasteToActiveApp else {
+        guard settings.pasteToActiveApp, !suppressDirectPaste else {
             ToastWindow.shared.show("클립보드에 복사됨")
             return
         }

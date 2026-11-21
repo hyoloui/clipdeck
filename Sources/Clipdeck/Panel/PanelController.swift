@@ -22,6 +22,8 @@ final class PanelController: NSObject {
     var onCopyOnly: ((_ itemID: Int64) -> Void)?
     /// 패널을 보이기 직전에 부른다(앞 앱 기억용)
     var onWillShow: (() -> Void)?
+    /// ⌘, 로 설정 창을 연다(메뉴바 아이콘을 숨겼을 때의 진입로)
+    var onOpenSettings: (() -> Void)?
 
     private let store: ClipStore
     private let settings: SettingsStore
@@ -60,10 +62,8 @@ final class PanelController: NSObject {
         isOpen = true
         hideToken += 1 // 페이드아웃 중이면 취소하고 바로 다시 나타난다
         onWillShow?()
-        let s = settings.load()
-        keys = s.panelKeys
         let panel = self.panel ?? makePanel()
-        panel.sharingType = s.hideDuringScreenSharing ? .none : .readOnly
+        applySettings(settings.load())
 
         model.resetForShow()
         presence.apps = model.sourceApps()
@@ -84,6 +84,19 @@ final class PanelController: NSObject {
             ctx.duration = 0.12
             panel.animator().alphaValue = 1
         }
+    }
+
+    /// 키 바인딩·푸터 힌트·화면 공유 중 숨김을 새 설정으로 바꾼다(패널이 열려 있어도 즉시 반영)
+    func applySettings(_ s: AppSettings) {
+        keys = s.panelKeys
+        presence.plainTextHint = Self.plainTextHint(s.panelKeys.plainText)
+        panel?.sharingType = s.hideDuringScreenSharing ? .none : .readOnly
+    }
+
+    /// 패널이 열려 있을 때만 목록을 다시 읽는다(MCP 서버 등 다른 프로세스가 DB를 바꿨을 때)
+    func reloadIfOpen() {
+        guard isOpen else { return }
+        model.reload()
     }
 
     /// `animated`가 true면 120ms 페이드아웃 뒤 닫는다. 붙여넣기·복사 경로는 false로 즉시 닫는다.
@@ -140,7 +153,6 @@ final class PanelController: NSObject {
         panel.contentView = effect
 
         let root = PanelView(model: model, presence: presence, loader: PreviewLoader(store: store),
-                             plainTextHint: Self.plainTextHint(keys.plainText),
                              onActivate: { [weak self] item in self?.paste(item, plainText: false) },
                              onNewBoard: { [weak self] in self?.promptNewBoard(for: nil) })
         let host = NSHostingView(rootView: root)
@@ -184,7 +196,7 @@ final class PanelController: NSObject {
     }
 
     private static func plainTextHint(_ chord: KeyChord) -> String {
-        chord == PanelKeyBindings().plainText ? "⇧↩" : "지정 키"
+        ShortcutFormat.display(chord)
     }
 
     // MARK: 입력 감시
@@ -256,6 +268,10 @@ final class PanelController: NSObject {
             deleteSelected(); return nil
         case (9, .command), (0, .command), (7, .command), (6, .command), (6, [.command, .shift]):
             return performEdit(event, flags, editor) ? nil : event
+        case (43, .command): // ⌘, 설정 열기
+            hide(animated: false)
+            onOpenSettings?()
+            return nil
         case (35, .command): // ⌘P
             DispatchQueue.main.async { [weak self] in self?.showBoardMenu() }
             return nil

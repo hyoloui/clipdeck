@@ -1,0 +1,80 @@
+import Foundation
+
+/// 설정에서 바꿀 수 있는 패널 안의 키
+public enum PanelKeySlot: String, CaseIterable, Sendable {
+    case plainText, nextBoard, previousBoard
+
+    public var label: String {
+        switch self {
+        case .plainText: "일반 텍스트로 붙여넣기"
+        case .nextBoard: "다음 보드"
+        case .previousBoard: "이전 보드"
+        }
+    }
+}
+
+extension PanelKeyBindings {
+    /// 패널이 이미 쓰는 고정 키: (키 코드, 수정자, 동작 이름)
+    private static let fixedKeys: [(KeyChord, String)] = {
+        var list: [(KeyChord, String)] = [
+            (KeyChord(keyCode: 36, modifiers: 0), "붙여넣기"),
+            (KeyChord(keyCode: 76, modifiers: 0), "붙여넣기"),
+            (KeyChord(keyCode: 53, modifiers: 0), "닫기"),
+            (KeyChord(keyCode: 126, modifiers: 0), "위로 이동"),
+            (KeyChord(keyCode: 125, modifiers: 0), "아래로 이동"),
+            (KeyChord(keyCode: 51, modifiers: 0), "삭제"),
+            (KeyChord(keyCode: 8, modifiers: ModifierBits.command), "클립보드에만 복사"),
+            (KeyChord(keyCode: 35, modifiers: ModifierBits.command), "보드에 고정"),
+            (KeyChord(keyCode: 4, modifiers: ModifierBits.command), "MCP 숨김 전환"),
+            (KeyChord(keyCode: 15, modifiers: ModifierBits.command), "가려진 항목 미리보기"),
+            (KeyChord(keyCode: 43, modifiers: ModifierBits.command), "설정 열기"),
+            // 검색창 편집 키
+            (KeyChord(keyCode: 9, modifiers: ModifierBits.command), "검색창 붙여넣기"),
+            (KeyChord(keyCode: 0, modifiers: ModifierBits.command), "검색창 전체 선택"),
+            (KeyChord(keyCode: 7, modifiers: ModifierBits.command), "검색창 잘라내기"),
+            (KeyChord(keyCode: 6, modifiers: ModifierBits.command), "검색창 실행 취소"),
+            (KeyChord(keyCode: 6, modifiers: ModifierBits.command | ModifierBits.shift), "검색창 다시 실행"),
+        ]
+        for code: UInt16 in [18, 19, 20, 21, 23, 22, 26, 28, 25] {
+            list.append((KeyChord(keyCode: code, modifiers: ModifierBits.command), "항목 바로 붙여넣기(⌘1–9)"))
+        }
+        return list
+    }()
+
+    /// `slot`에 `chord`를 넣으려 할 때 막아야 하면 이유(한국어)를, 아니면 nil을 돌려준다.
+    public func conflict(for slot: PanelKeySlot, proposing chord: KeyChord) -> String? {
+        let mods = chord.modifiers & ModifierBits.eventMask
+        let chord = KeyChord(keyCode: chord.keyCode, modifiers: mods)
+        let shown = ShortcutFormat.display(chord)
+
+        // 수정키 없는(⇧만 포함) 글자 키는 검색창 입력을 가로챈다
+        if ShortcutFormat.isTypingKey(chord.keyCode),
+           mods & (ModifierBits.command | ModifierBits.control | ModifierBits.option) == 0 {
+            return "\(shown)은(는) 검색어 입력과 겹칩니다. ⌘, ⌃, ⌥ 중 하나를 포함하거나 글자가 아닌 키를 쓰세요."
+        }
+        if let fixed = Self.fixedKeys.first(where: { $0.0 == chord }) {
+            return "\(shown)은(는) 패널의 '\(fixed.1)' 키와 겹칩니다."
+        }
+        for other in PanelKeySlot.allCases where other != slot {
+            if self[other] == chord { return "\(shown)은(는) '\(other.label)' 키와 겹칩니다." }
+        }
+        return nil
+    }
+
+    public subscript(slot: PanelKeySlot) -> KeyChord {
+        get {
+            switch slot {
+            case .plainText: plainText
+            case .nextBoard: nextBoard
+            case .previousBoard: previousBoard
+            }
+        }
+        set {
+            switch slot {
+            case .plainText: plainText = newValue
+            case .nextBoard: nextBoard = newValue
+            case .previousBoard: previousBoard = newValue
+            }
+        }
+    }
+}

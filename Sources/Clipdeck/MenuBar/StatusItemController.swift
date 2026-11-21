@@ -1,11 +1,9 @@
 import AppKit
 import ClipdeckCore
-import os
 
-/// 메뉴바 아이콘과 메뉴. "열기"·"설정…"은 이후 작업이 연결한다.
+/// 메뉴바 아이콘과 메뉴
 @MainActor
 final class StatusItemController: NSObject, NSMenuDelegate {
-    private static let log = Logger(subsystem: "local.hyoloui.clipdeck", category: "menubar")
 
     var onOpen: (() -> Void)?
     var onOpenSettings: (() -> Void)?
@@ -20,6 +18,7 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         self.store = store
         self.settings = settings
         super.init()
+        statusItem.isVisible = settings.load().showMenuBarIcon
         menu.delegate = self
         statusItem.menu = menu
         refresh()
@@ -108,22 +107,8 @@ final class StatusItemController: NSObject, NSMenuDelegate {
         refresh()
     }
 
-    @objc private func eraseHistory() {
-        let alert = NSAlert()
-        alert.messageText = "클립보드 기록을 모두 지울까요?"
-        alert.informativeText = "Pinboard에 넣은 항목은 지워지지 않습니다. 이 작업은 되돌릴 수 없습니다."
-        alert.addButton(withTitle: "지우기")
-        alert.addButton(withTitle: "취소")
-        NSApp.activate()
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        do {
-            try store.eraseHistory()
-        } catch {
-            Self.log.error("기록 삭제 실패: \(String(describing: error), privacy: .public)")
-            let failure = NSAlert()
-            failure.messageText = "기록을 지우지 못했습니다"
-            failure.informativeText = String(describing: error)
-            failure.runModal()
-        }
-    }
+    @objc private func eraseHistory() { HistoryEraser.confirmAndErase(store: store) }
+
+    /// 설정의 "메뉴바 아이콘 표시"에 맞춰 아이콘을 보이거나 숨긴다
+    func setIconVisible(_ visible: Bool) { statusItem.isVisible = visible }
 }
