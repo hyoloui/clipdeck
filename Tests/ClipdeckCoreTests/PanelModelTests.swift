@@ -120,6 +120,21 @@ import Foundation
         #expect(model.items.count == 3)
     }
 
+    /// 검색어가 비워진 시각을 기억하고, 패널을 열 때의 초기화는 세지 않는다
+    @Test func queryClearedAtTracksClearing() throws {
+        let (_, model, _, dir) = try seeded(["a"])
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(model.queryClearedAt == nil)
+        model.query = "ab"
+        #expect(model.queryClearedAt == nil)
+        model.query = ""
+        let cleared = try #require(model.queryClearedAt)
+        #expect(Date().timeIntervalSince(cleared) < 1)
+        model.query = "x"
+        model.resetForShow()
+        #expect(model.queryClearedAt == nil)
+    }
+
     @Test func loadErrorOnFailure() throws {
         let (store, dir) = try makeTempStore()
         defer { try? FileManager.default.removeItem(at: dir) }

@@ -13,6 +13,7 @@ public final class PanelModel: ObservableObject {
     @Published public var query: String = "" {
         didSet {
             guard query != oldValue else { return }
+            if query.isEmpty { queryClearedAt = Date() }
             selectedIndex = 0
             reload()
         }
@@ -32,6 +33,8 @@ public final class PanelModel: ObservableObject {
             reload()
         }
     }
+    /// 사용자가 검색어를 마지막으로 비운 시각(⌫ 보호용). 열 때의 초기화는 세지 않는다.
+    public private(set) var queryClearedAt: Date?
     @Published public private(set) var items: [ClipItem] = []
     @Published public private(set) var selectedIndex: Int = 0
     /// 0은 "기록", 1부터는 `boards[i-1]`
@@ -110,6 +113,7 @@ public final class PanelModel: ObservableObject {
         kindFilter = nil
         appFilter = nil
         query = ""
+        queryClearedAt = nil
         reload()
     }
 

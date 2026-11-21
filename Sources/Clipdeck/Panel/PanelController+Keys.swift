@@ -78,7 +78,13 @@ extension PanelController {
             return nil
         case (51, []): // ⌫: 검색어가 있으면 글자 삭제가 우선
             guard model.query.isEmpty else { return event }
-            deleteSelected(); return nil
+            // 누르고 있는 반복 입력이나 검색어를 막 다 지운 직후의 입력은 항목을 지우지 않는다
+            let sinceCleared = model.queryClearedAt.map { Int(Date().timeIntervalSince($0) * 1000) }
+            if DeleteKeyGuard.allowsItemDelete(isRepeat: event.isARepeat, queryEmpty: true,
+                                               msSinceQueryCleared: sinceCleared) {
+                deleteSelected()
+            }
+            return nil
         case (9, .command), (0, .command), (7, .command), (6, .command), (6, [.command, .shift]):
             return performEdit(event, flags, editor) ? nil : event
         case (13, .command): // ⌘W: 메인 메뉴로 넘어가 다른 창을 닫지 않게 esc와 같게 처리
