@@ -30,10 +30,10 @@ scripts/register-mcp.sh             # skillshare로 claude·codex·antigravity�
 
 ## 사용법 스킬 설치
 
-LLM이 도구를 올바르게 쓰게 하는 중앙 스킬이다.
+LLM이 도구를 올바르게 쓰게 하는 중앙 스킬이다. 저장소 폴더에서 실행한다.
 
 ```sh
-skillshare-managed install ~/Desktop/project/clipdeck/skill/clipdeck
+skillshare-managed install ./skill/clipdeck
 ```
 
 ## 데이터 위치

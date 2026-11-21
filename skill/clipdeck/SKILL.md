@@ -46,9 +46,9 @@ Clipdeck는 이 Mac의 클립보드 기록을 보관한다. `clipdeck` MCP 서�
 - 숨겨진 항목은 "없는 항목"과 구별되지 않는다. 못 찾았으면 "없다"고 단정하지 말고 "MCP에서 보이는 범위에는 없다"고 말한다.
 - `create_text_item`은 호출마다 새 항목을 만든다. 같은 텍스트로 다시 부르면 중복이 생기니 한 번만 부른다.
 - `create_text_item`은 최근 1시간에 MCP가 만든 항목이 200개 이상이면 오류를 돌려준다.
-- 저장한 텍스트가 비밀값으로 판정되면 숨겨지고, 응답에 쓸 수 있는 id가 오지 않는다. 사용자에게 저장 결과를 확인할 수 없다고 알린다.
+- 저장한 텍스트가 비밀값으로 판정되면 "숨김 처리됨"이라는 안내만 오고 id는 오지 않는다. `pinboard`를 줬어도 보드에 추가되지 않는다. 사용자에게 저장은 됐지만 MCP에서는 볼 수 없다고 알린다.
 - `copy_to_clipboard(text)`로 복사한 텍스트는 기록에 남지 않는다. 남기려면 `create_text_item`을 쓴다.
-- 텍스트는 한 번에 최대 100KB다. 넘으면 잘렸다고 표시된다.
+- 입력 텍스트(`create_text_item`, `copy_to_clipboard(text)`)는 100KB를 넘으면 오류다. `get_item` 출력은 100KB에서 잘리고 잘렸다고 표시된다.
 - 삭제 도구는 없다. 항목 삭제·비우기는 Clipdeck 앱에서 사용자가 직접 한다. 요청받으면 앱에서 하라고 안내한다.
 
 ## 주의
@@ -61,5 +61,5 @@ Clipdeck는 이 Mac의 클립보드 기록을 보관한다. `clipdeck` MCP 서�
 ## 서버가 연결되지 않을 때
 
 1. Clipdeck 앱이 설치돼 있는지 확인한다(`~/Applications/Clipdeck.app`). 없으면 저장소의 `scripts/bundle.sh`로 설치해야 한다.
-2. 설치돼 있으면 저장소에서 `scripts/register-mcp.sh`를 다시 실행하도록 사용자에게 안내한다.
+2. 설치돼 있으면 `~/Desktop/project/clipdeck/scripts/register-mcp.sh`를 다시 실행하도록 사용자에게 안내한다.
 3. 등록 뒤에는 사용 중인 LLM 클라이언트를 새로 시작해야 도구가 보인다.
