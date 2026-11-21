@@ -62,7 +62,7 @@
 ### 6.1 구성
 
 ```
-~/Desktop/clipdeck/               SwiftPM 패키지, git 저장소
+~/Desktop/project/clipdeck/               SwiftPM 패키지, git 저장소
   Sources/ClipdeckCore/           모델, SQLite 저장소, 캡처 필터, 검색, 보관 정책
   Sources/Clipdeck/               앱(AppKit + SwiftUI): 메뉴바, 패널, 설정, 캡처, 붙여넣기
   Sources/ClipdeckMCP/            stdio MCP 서버 실행 파일(clipdeck-mcp)

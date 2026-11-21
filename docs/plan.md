@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- 저장소: `~/Desktop/clipdeck`(git). 설치: `~/Applications/Clipdeck.app`. MCP 실행 파일: `~/Applications/Clipdeck.app/Contents/MacOS/clipdeck-mcp`
+- 저장소: `~/Desktop/project/clipdeck`(git). 설치: `~/Applications/Clipdeck.app`. MCP 실행 파일: `~/Applications/Clipdeck.app/Contents/MacOS/clipdeck-mcp`
 - 번들 ID `local.hyoloui.clipdeck`, `LSUIElement = true`, 최소 macOS 14 (`platforms: [.macOS(.v14)]`), `swift-tools-version: 6.0`
 - 데이터: `~/Library/Application Support/Clipdeck/clipdeck.sqlite` + `blobs/<sha256>`. 환경변수 `CLIPDECK_DATA_DIR`가 있으면 그 폴더를 쓴다(테스트·MCP 확인용)
 - SQLite: WAL, `busy_timeout = 2000`. 64KB를 넘는 표현 데이터는 blob 파일로 저장
@@ -50,7 +50,7 @@
   - `Models.swift`: `ItemKind`(text, link, image, file, color), `ClipItem`, `Representation(uti: String, data: Data)`, `NewClip`, `InsertResult`(.inserted(Int64), .bumped(Int64)), `Pinboard(id, name, color: String?, sort, itemCount)`, `SearchQuery(text = "", kind: ItemKind?, appBundleID: String?, pinboardID: Int64?, since: Date?, limit = 50)` — 필드는 스펙 §6.2 `items` 컬럼과 같은 이름(camelCase)
 - 타깃: 라이브러리 `ClipdeckCore`, `ClipdeckMCPKit`(Core 의존), 실행 파일 `Clipdeck`(Core 의존), `clipdeck-mcp`(MCPKit 의존). `ClipdeckCore`는 `linkerSettings: [.linkedLibrary("sqlite3")]`, `import SQLite3`
 
-- [ ] **Step 1:** `mkdir ~/Desktop/clipdeck && cd ~/Desktop/clipdeck && git init`, 스펙·계획을 `docs/`로 복사
+- [ ] **Step 1:** `mkdir ~/Desktop/project/clipdeck && cd ~/Desktop/project/clipdeck && git init`, 스펙·계획을 `docs/`로 복사
 - [ ] **Step 2: 실패하는 테스트 작성**
 
 ```swift
@@ -478,7 +478,7 @@ skillshare mcp check clipdeck --live
     - 삭제는 앱에서만 된다는 점
 
 - [ ] **Step 1:** `scripts/register-mcp.sh` 실행. `skillshare mcp check clipdeck --live` 출력에서 claude·codex·antigravity 세 대상이 모두 정상이어야 한다. 실패하면 출력 전문을 사용자에게 보고한다.
-- [ ] **Step 2:** `skillshare-managed install ~/Desktop/clipdeck/skill/clipdeck` 실행. 이 명령은 차단돼도 exit 0을 반환하므로 결과를 파일로 확인한다. 다음 세 파일이 있어야 한다.
+- [ ] **Step 2:** `skillshare-managed install ~/Desktop/project/clipdeck/skill/clipdeck` 실행. 이 명령은 차단돼도 exit 0을 반환하므로 결과를 파일로 확인한다. 다음 세 파일이 있어야 한다.
   - `~/.config/skillshare/skills/clipdeck/SKILL.md`
   - `~/.claude/skills/clipdeck/SKILL.md`
   - `~/.gemini/antigravity-cli/skills/clipdeck/SKILL.md`
