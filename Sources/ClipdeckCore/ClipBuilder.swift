@@ -34,7 +34,8 @@ public enum ClipBuilder {
             let urls = representations.filter { $0.uti == PasteboardTypes.fileURL }
                 .compactMap { String(data: $0.data, encoding: .utf8) }
             let names = urls.map { URL(string: $0)?.lastPathComponent ?? $0 }
-            preview = names.joined(separator: ", ")
+            if urls.isEmpty { return nil }
+            preview = String(names.joined(separator: ", ").prefix(previewLimit))
             plainText = names.joined(separator: "\n")
             hashSource = Data(urls.joined(separator: "\n").utf8)
         case .color:
@@ -83,10 +84,7 @@ public enum ClipBuilder {
     }
 
     private static func colorPreview(_ data: Data) -> String {
-        guard let unarchiver = try? NSKeyedUnarchiver(forReadingFrom: data) else { return "색상" }
-        unarchiver.requiresSecureCoding = false
-        defer { unarchiver.finishDecoding() }
-        guard let color = unarchiver.decodeObject(forKey: NSKeyedArchiveRootObjectKey) as? NSColor,
+        guard let color = try? NSKeyedUnarchiver.unarchivedObject(ofClass: NSColor.self, from: data),
               let rgb = color.usingColorSpace(.sRGB) else { return "색상" }
         func b(_ v: CGFloat) -> Int { Int((min(max(v, 0), 1) * 255).rounded()) }
         return String(format: "#%02X%02X%02X", b(rgb.redComponent), b(rgb.greenComponent), b(rgb.blueComponent))
