@@ -125,6 +125,15 @@ private let safeCases: [(name: String, text: String)] = [
         #expect(elapsed < 2)
     }
 
+    @Test func jwtPrefixRepeatFinishesFast() {
+        let text = String(repeating: "-eyJ", count: 65_536 / 4)
+        let start = Date()
+        _ = SecretDetector.isSecret(text)
+        let elapsed = Date().timeIntervalSince(start)
+        print("jwtPrefixRepeat: \(elapsed)s")
+        #expect(elapsed < 2)
+    }
+
     @Test func largeTextFinishesFast() {
         let big = String(repeating: "lorem ipsum dolor sit amet ", count: 400_000) // 약 10MB
         let start = Date()

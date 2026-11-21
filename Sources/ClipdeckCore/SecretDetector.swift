@@ -18,7 +18,7 @@ public enum SecretDetector {
         #"\bxox[abprs]-[A-Za-z0-9-]{10,}"#,
         #"\b(?:AKIA|ASIA)[0-9A-Z]{16}\b"#,
         #"\bAIza[0-9A-Za-z_-]{35}"#,
-        #"\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}"#,
+        #"(?:^|[^A-Za-z0-9_-])eyJ[A-Za-z0-9_-]{8,2048}\.[A-Za-z0-9_-]{8,2048}\.[A-Za-z0-9_-]{8,2048}"#,
         #"-----BEGIN [A-Z ]*PRIVATE KEY(?: BLOCK)?-----"#,
     ].joined(separator: "|"))
 
