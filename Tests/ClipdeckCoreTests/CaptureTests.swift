@@ -77,7 +77,25 @@ private let now = Date(timeIntervalSince1970: 1_000_000)
         #expect(c.preview.count <= 300)
         #expect(c.preview.hasPrefix("가나다 라마바 가나다"))
         #expect(c.kind == .text)
-        #expect(c.plainText == big)
+        #expect(c.plainText == ClipLimits.prefix(big))
+    }
+
+    /// `plainText`(MCP·FTS에 닿는 텍스트)는 앞 100KB, 붙여넣기용 표현은 전문 그대로
+    @Test func plainTextCappedAt100KB() throws {
+        let big = String(repeating: "가", count: 50_000) + "끝" // 150,003바이트
+        let clip = try #require(ClipBuilder.make(representations: [rep(PasteboardTypes.plainText, big)],
+                                                 sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy()))
+        let plain = try #require(clip.plainText)
+        #expect(plain.utf8.count <= ClipLimits.plainTextBytes)
+        #expect(plain.utf8.count > ClipLimits.plainTextBytes - 3)
+        #expect(big.hasPrefix(plain))
+        #expect(clip.representations.first?.data == Data(big.utf8))
+    }
+
+    @Test func prefixCutsAtCharacterBoundary() {
+        #expect(ClipLimits.prefix("가나", maxBytes: 4) == "가")
+        #expect(ClipLimits.prefix("e\u{301}x", maxBytes: 2) == "") // 결합 문자를 가르지 않는다
+        #expect(ClipLimits.prefix("abc", maxBytes: 3) == "abc")
     }
 
     @Test func previewCollapsesWhitespace() {

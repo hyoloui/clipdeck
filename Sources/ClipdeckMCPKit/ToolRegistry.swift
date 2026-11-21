@@ -37,7 +37,8 @@ struct ToolError: Error {
 public final class ToolRegistry {
     static let maxLimit = 100
     static let defaultLimit = 20
-    static let maxTextBytes = 100 * 1024
+    /// 텍스트 상한(100KB). 저장되는 `plain_text`·비밀값 검사 범위와 같은 값이다.
+    static let maxTextBytes = ClipLimits.plainTextBytes
     static let maxImagePixels = 1024
     static let previewChars = 200
     /// 항목이 없을 때의 문구. 숨김 항목도 같은 경로로 이 문구가 나온다.
@@ -219,12 +220,10 @@ public final class ToolRegistry {
         }
     }
 
-    /// 100KB를 넘으면 UTF-8 경계에서 자른다.
+    /// 100KB를 넘으면 문자 경계에서 자른다(예전에 전문이 저장된 행 대비).
     static func truncate(_ s: String) -> (String, Bool) {
         guard s.utf8.count > maxTextBytes else { return (s, false) }
-        var cut = Data(s.utf8.prefix(maxTextBytes))
-        while !cut.isEmpty, String(data: cut, encoding: .utf8) == nil { cut.removeLast() }
-        return (String(decoding: cut, as: UTF8.self), true)
+        return (ClipLimits.prefix(s, maxBytes: maxTextBytes), true)
     }
 
     /// 긴 변이 1024px를 넘으면 줄이고, 아니면 그대로 PNG로 인코딩한다.

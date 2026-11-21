@@ -81,7 +81,8 @@ private let safeCases: [(name: String, text: String)] = [
     ("empty", ""),
 ]
 
-@Suite struct SecretDetectorTests {
+// 시간 측정 테스트가 같은 스위트의 무거운 검사와 CPU를 다투지 않게 차례로 돌린다
+@Suite(.serialized) struct SecretDetectorTests {
     @Test(arguments: detectCases) func detects(_ c: (name: String, text: String)) {
         #expect(SecretDetector.isSecret(c.text), "\(c.name)")
     }
@@ -117,7 +118,7 @@ private let safeCases: [(name: String, text: String)] = [
 
     @Test(.serialized, arguments: ["token", "password", "token_", "apikey"])
     func keywordRepeatFinishesFast(_ unit: String) {
-        let text = String(repeating: unit, count: 65_536 / unit.count)
+        let text = String(repeating: unit, count: ClipLimits.plainTextBytes / unit.count)
         let start = Date()
         _ = SecretDetector.isSecret(text)
         let elapsed = Date().timeIntervalSince(start)
@@ -127,7 +128,7 @@ private let safeCases: [(name: String, text: String)] = [
 
     @Test(.serialized, arguments: ["-eyJ", "eyJ", "xeyJ."])
     func jwtPrefixRepeatFinishesFast(_ unit: String) {
-        let text = String(repeating: unit, count: 65_536 / unit.count)
+        let text = String(repeating: unit, count: ClipLimits.plainTextBytes / unit.count)
         let start = Date()
         _ = SecretDetector.isSecret(text)
         let elapsed = Date().timeIntervalSince(start)
@@ -157,10 +158,20 @@ private let safeCases: [(name: String, text: String)] = [
         #expect(Date().timeIntervalSince(start) < 5)
     }
 
-    @Test func onlyFirst64KBIsScanned() {
-        let pad = String(repeating: "a ", count: 40_000) // 80KB
+    /// 검사 범위는 MCP에 닿는 범위(앞 100KB)와 같다
+    @Test func onlyFirst100KBIsScanned() {
+        let pad = String(repeating: "a ", count: 55_000) // 110KB
         #expect(!SecretDetector.isSecret(pad + "gh" + "p_" + body36))
         #expect(SecretDetector.isSecret("gh" + "p_" + body36 + " " + pad))
+    }
+
+    /// 64KB 뒤(70KB 지점)의 키도 잡아 MCP에서 숨긴다
+    @Test func keyAt70KBIsHidden() {
+        let text = String(repeating: "a ", count: 35_000) + "gh" + "p_" + body36 // 키가 70,000바이트 지점
+        #expect(SecretDetector.isSecret(text))
+        let rep = Representation(uti: PasteboardTypes.plainText, data: Data(text.utf8))
+        #expect(ClipBuilder.make(representations: [rep], sourceAppBundleID: nil, sourceAppName: nil,
+                                 policy: CapturePolicy())?.mcpHidden == true)
     }
 
     @Test func builderMarksSecretHidden() {

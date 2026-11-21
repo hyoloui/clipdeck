@@ -46,9 +46,11 @@ public enum ClipBuilder {
         }
 
         let hash = SHA256.hash(data: hashSource).map { String(format: "%02x", $0) }.joined()
+        // MCP·FTS에 닿는 텍스트는 앞 100KB만 담는다(비밀값 검사 범위와 같다). 붙여넣기는 표현을 쓰므로 전문이 간다.
+        let storedText = plainText.map { ClipLimits.prefix($0) }
         let hiddenApp = sourceAppBundleID.map { policy.mcpHiddenBundleIDs.contains($0) } ?? false
-        let hidden = hiddenApp || (policy.detectSecrets && plainText.map(SecretDetector.isSecret) == true)
-        return NewClip(kind: kind, preview: preview, plainText: plainText, contentHash: hash,
+        let hidden = hiddenApp || (policy.detectSecrets && storedText.map(SecretDetector.isSecret) == true)
+        return NewClip(kind: kind, preview: preview, plainText: storedText, contentHash: hash,
                        sourceAppBundleID: sourceAppBundleID, sourceAppName: sourceAppName,
                        mcpHidden: hidden, representations: representations)
     }
