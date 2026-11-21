@@ -26,10 +26,12 @@ final class PasteboardMonitor {
 
     func start() {
         guard timer == nil else { return }
-        let t = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+        let t = Timer(timeInterval: 0.5, repeats: true) { [weak self] _ in
             MainActor.assumeIsolated { self?.tick() }
         }
         t.tolerance = 0.1
+        // 메뉴가 열려 있는 동안(추적 모드)에도 돌도록 common 모드로 등록
+        RunLoop.main.add(t, forMode: .common)
         timer = t
     }
 

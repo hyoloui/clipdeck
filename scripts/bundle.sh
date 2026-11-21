@@ -20,7 +20,8 @@ cp "$BIN/Clipdeck" "$BIN/clipdeck-mcp" "$APP/Contents/MacOS/"
 cp Resources/Info.plist "$APP/Contents/Info.plist"
 cp Resources/AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
 
-if security find-identity -p codesigning | grep -q "$SIGN_NAME"; then
+IDENTITIES="$(security find-identity -v -p codesigning || true)"
+if [[ "$IDENTITIES" == *"$SIGN_NAME"* ]]; then
   IDENTITY="$SIGN_NAME"
 else
   echo "경고: '$SIGN_NAME' 인증서가 없어 임시 서명(ad-hoc)을 씁니다. 재빌드마다 서명이 바뀌어 손쉬운 사용 권한이 풀립니다." >&2

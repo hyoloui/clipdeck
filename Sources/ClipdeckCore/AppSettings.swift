@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// 전역 단축키 (Carbon 키 코드·수정자). 기본은 ⇧⌘V.
 public struct HotKeySpec: Codable, Equatable, Sendable {
@@ -104,6 +105,7 @@ public struct AppSettings: Codable, Equatable, Sendable {
 public final class SettingsStore: @unchecked Sendable {
     private let defaults: UserDefaults
     private static let key = "settings"
+    private static let log = Logger(subsystem: "local.hyoloui.clipdeck", category: "settings")
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -111,9 +113,13 @@ public final class SettingsStore: @unchecked Sendable {
 
     /// 없거나 읽을 수 없으면 기본값
     public func load() -> AppSettings {
-        guard let data = defaults.data(forKey: Self.key),
-              let s = try? JSONDecoder().decode(AppSettings.self, from: data) else { return AppSettings() }
-        return s
+        guard let data = defaults.data(forKey: Self.key) else { return AppSettings() }
+        do {
+            return try JSONDecoder().decode(AppSettings.self, from: data)
+        } catch {
+            Self.log.error("설정을 읽지 못해 기본값을 씁니다: \(String(describing: error), privacy: .public)")
+            return AppSettings()
+        }
     }
 
     public func save(_ s: AppSettings) {

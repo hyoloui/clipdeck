@@ -120,6 +120,10 @@ final class StatusItemController: NSObject, NSMenuDelegate {
             try store.eraseHistory()
         } catch {
             Self.log.error("기록 삭제 실패: \(String(describing: error), privacy: .public)")
+            let failure = NSAlert()
+            failure.messageText = "기록을 지우지 못했습니다"
+            failure.informativeText = String(describing: error)
+            failure.runModal()
         }
     }
 }
