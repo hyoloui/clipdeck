@@ -49,4 +49,27 @@ import Testing
         // 글자가 아닌 키(F키)는 수정키 없이도 된다
         #expect(b.conflict(for: .plainText, proposing: KeyChord(keyCode: 122, modifiers: 0)) == nil)
     }
+
+    @Test func 전역_단축키와_같은_조합은_거부한다() {
+        let b = PanelKeyBindings()
+        let global = HotKeySpec.openPanel // ⇧⌘V
+        let same = KeyChord(keyCode: 9, modifiers: cmd | shift)
+        #expect(b.conflict(for: .plainText, proposing: same, globalHotKey: global)?.contains("패널 열기") == true)
+        #expect(b.conflict(for: .plainText, proposing: same) == nil)
+        #expect(b.conflict(for: .plainText, proposing: KeyChord(keyCode: 9, modifiers: cmd | option), globalHotKey: global) == nil)
+    }
+
+    @Test func 전역_단축키가_패널_키와_같으면_슬롯을_알려_준다() {
+        let b = PanelKeyBindings()
+        #expect(b.slot(using: HotKeySpec(keyCode: 48, eventModifiers: 0)) == .nextBoard)
+        #expect(b.slot(using: HotKeySpec(keyCode: 36, eventModifiers: shift)) == .plainText)
+        #expect(b.slot(using: .openPanel) == nil)
+    }
+
+    @Test func 좌우_화살표는_검색창_커서_이동과_겹친다() {
+        let b = PanelKeyBindings()
+        #expect(b.conflict(for: .nextBoard, proposing: KeyChord(keyCode: 123, modifiers: 0)) != nil)
+        #expect(b.conflict(for: .nextBoard, proposing: KeyChord(keyCode: 124, modifiers: 0)) != nil)
+        #expect(b.conflict(for: .nextBoard, proposing: KeyChord(keyCode: 124, modifiers: option)) == nil)
+    }
 }

@@ -54,12 +54,12 @@ struct MCPTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { status.refresh(model.store) }
+        .onReceive(model.$isWindowVisible) { if $0 { status.refresh(model.store) } }
     }
 
     private func copyRow(_ title: String, _ value: String, copyLabel: String) -> some View {
         LabeledContent(title) {
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: Layout.s4) {
                 Text(value).font(.callout.monospaced()).textSelection(.enabled).multilineTextAlignment(.trailing)
                 Button(copyLabel) { Self.copy(value) }
             }

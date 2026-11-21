@@ -36,8 +36,19 @@ struct HistoryTab: View {
     /// 줄일 때 지워질 개수를 확인받는다. 취소하면 바꾸지 않는다.
     private var retentionBinding: Binding<RetentionPeriod> {
         Binding(get: { model.settings.retention }, set: { new in
-            if new.isShorter(than: model.settings.retention), let cutoff = new.cutoff(from: .now),
-               let count = try? model.store.purgeCount(olderThan: cutoff), count > 0 {
+            if new.isShorter(than: model.settings.retention), let cutoff = new.cutoff(from: .now) {
+                let count: Int
+                do {
+                    count = try model.store.purgeCount(olderThan: cutoff)
+                } catch {
+                    let failure = NSAlert()
+                    failure.messageText = "지워질 항목 수를 확인하지 못했습니다"
+                    failure.informativeText = "보관 기간을 바꾸지 않았습니다.\n\(error.localizedDescription)"
+                    failure.runModal()
+                    model.objectWillChange.send()
+                    return
+                }
+                guard count > 0 else { model.update { $0.retention = new }; return }
                 let alert = NSAlert()
                 alert.messageText = "보관 기간을 \(new.label)로 줄일까요?"
                 alert.informativeText = "\(count)개 항목이 지워집니다. Pinboard 항목은 지워지지 않습니다."

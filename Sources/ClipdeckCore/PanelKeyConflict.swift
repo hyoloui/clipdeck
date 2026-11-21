@@ -23,11 +23,15 @@ extension PanelKeyBindings {
             (KeyChord(keyCode: 126, modifiers: 0), "위로 이동"),
             (KeyChord(keyCode: 125, modifiers: 0), "아래로 이동"),
             (KeyChord(keyCode: 51, modifiers: 0), "삭제"),
+            (KeyChord(keyCode: 123, modifiers: 0), "검색창 커서 이동"),
+            (KeyChord(keyCode: 124, modifiers: 0), "검색창 커서 이동"),
             (KeyChord(keyCode: 8, modifiers: ModifierBits.command), "클립보드에만 복사"),
             (KeyChord(keyCode: 35, modifiers: ModifierBits.command), "보드에 고정"),
             (KeyChord(keyCode: 4, modifiers: ModifierBits.command), "MCP 숨김 전환"),
             (KeyChord(keyCode: 15, modifiers: ModifierBits.command), "가려진 항목 미리보기"),
             (KeyChord(keyCode: 43, modifiers: ModifierBits.command), "설정 열기"),
+            (KeyChord(keyCode: 13, modifiers: ModifierBits.command), "패널 닫기"),
+            (KeyChord(keyCode: 12, modifiers: ModifierBits.command), "종료 방지"),
             // 검색창 편집 키
             (KeyChord(keyCode: 9, modifiers: ModifierBits.command), "검색창 붙여넣기"),
             (KeyChord(keyCode: 0, modifiers: ModifierBits.command), "검색창 전체 선택"),
@@ -42,7 +46,7 @@ extension PanelKeyBindings {
     }()
 
     /// `slot`에 `chord`를 넣으려 할 때 막아야 하면 이유(한국어)를, 아니면 nil을 돌려준다.
-    public func conflict(for slot: PanelKeySlot, proposing chord: KeyChord) -> String? {
+    public func conflict(for slot: PanelKeySlot, proposing chord: KeyChord, globalHotKey: HotKeySpec? = nil) -> String? {
         let mods = chord.modifiers & ModifierBits.eventMask
         let chord = KeyChord(keyCode: chord.keyCode, modifiers: mods)
         let shown = ShortcutFormat.display(chord)
@@ -55,10 +59,22 @@ extension PanelKeyBindings {
         if let fixed = Self.fixedKeys.first(where: { $0.0 == chord }) {
             return "\(shown)은(는) 패널의 '\(fixed.1)' 키와 겹칩니다."
         }
+        // 전역 단축키가 먼저 가로채므로 같은 조합이면 패널 안에서는 동작하지 않는다
+        if let g = globalHotKey, g.keyCode == UInt32(chord.keyCode), g.eventModifiers == chord.modifiers {
+            return "\(shown)은(는) 전역 '패널 열기' 단축키와 같습니다."
+        }
         for other in PanelKeySlot.allCases where other != slot {
             if self[other] == chord { return "\(shown)은(는) '\(other.label)' 키와 겹칩니다." }
         }
         return nil
+    }
+
+    /// 전역 단축키로 `spec`을 쓰려 할 때 같은 조합을 쓰는 패널 키가 있으면 그 슬롯
+    public func slot(using spec: HotKeySpec) -> PanelKeySlot? {
+        PanelKeySlot.allCases.first {
+            let c = self[$0]
+            return UInt32(c.keyCode) == spec.keyCode && c.modifiers == spec.eventModifiers
+        }
     }
 
     public subscript(slot: PanelKeySlot) -> KeyChord {

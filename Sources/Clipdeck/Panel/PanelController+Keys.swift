@@ -75,6 +75,10 @@ extension PanelController {
             deleteSelected(); return nil
         case (9, .command), (0, .command), (7, .command), (6, .command), (6, [.command, .shift]):
             return performEdit(event, flags, editor) ? nil : event
+        case (13, .command): // ⌘W: 메인 메뉴로 넘어가 다른 창을 닫지 않게 esc와 같게 처리
+            hide(); return nil
+        case (12, .command): // ⌘Q: 패널에서 실수로 앱이 종료되지 않게 무시
+            return nil
         case (43, .command): // ⌘, 설정 열기
             hide(animated: false)
             onOpenSettings?()

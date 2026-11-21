@@ -41,7 +41,7 @@ private final class PinboardsState: ObservableObject {
         let alert = NSAlert()
         alert.messageText = "Pinboard 이름 바꾸기"
         let field = NSTextField(string: board.name)
-        field.frame = NSRect(x: 0, y: 0, width: 240, height: 24)
+        field.frame = NSRect(x: 0, y: 0, width: 240, height: Layout.s24)
         field.setAccessibilityLabel("보드 이름")
         alert.accessoryView = field
         alert.window.initialFirstResponder = field
@@ -66,9 +66,13 @@ private final class PinboardsState: ObservableObject {
 }
 
 struct PinboardsTab: View {
+    @ObservedObject var model: SettingsModel
     @StateObject private var state: PinboardsState
 
-    init(store: ClipStore) { _state = StateObject(wrappedValue: PinboardsState(store: store)) }
+    init(model: SettingsModel) {
+        self.model = model
+        _state = StateObject(wrappedValue: PinboardsState(store: model.store))
+    }
 
     var body: some View {
         Form {
@@ -100,6 +104,6 @@ struct PinboardsTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { state.reload() }
+        .onReceive(model.$isWindowVisible) { if $0 { state.reload() } }
     }
 }

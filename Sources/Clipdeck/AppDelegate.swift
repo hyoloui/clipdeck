@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var dbObserver: DBChangeObserver?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        MainMenu.install()
         let store: ClipStore
         do {
             store = try ClipStore(directory: ClipStore.defaultDirectory())
@@ -42,6 +43,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let model = SettingsModel(store: store, settingsStore: settings)
         model.apply = { [weak self] new, old in
             self?.applySettings(new, old: old) ?? SettingsApplyResult(settings: new)
+        }
+        // 단축키 녹화 중에는 전역 단축키 등록을 풀어 그 조합이 녹화기에 도달하게 한다
+        model.recording.onRecordingChange = { [weak self] recording in
+            if recording { self?.hotKey?.suspend() } else { self?.hotKey?.resume() }
         }
         let settingsWindow = SettingsWindowController(model: model)
         self.settingsWindow = settingsWindow
@@ -97,7 +102,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let service = SMAppService.mainApp
         do {
             if enabled, service.status != .enabled { try service.register() }
-            if !enabled, service.status != .notRegistered { try service.unregister() }
+            // 등록돼 있지 않거나 찾을 수 없는 상태에서 끄는 것은 오류가 아니다
+            if !enabled, service.status != .notRegistered, service.status != .notFound { try service.unregister() }
             return nil
         } catch {
             Self.log.error("로그인 시 실행 설정 실패: \(String(describing: error), privacy: .public)")
@@ -110,8 +116,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func syncLoginItemOnFirstLaunch() {
         let key = "didSyncLoginItem"
         guard !UserDefaults.standard.bool(forKey: key), Bundle.main.bundleIdentifier == "local.hyoloui.clipdeck" else { return }
-        UserDefaults.standard.set(true, forKey: key)
-        if settings.load().openAtLogin, let error = setLoginItem(true) { Self.log.error("\(error, privacy: .public)") }
+        guard settings.load().openAtLogin else { return }
+        if let error = setLoginItem(true) {
+            Self.log.error("\(error, privacy: .public)") // 실패하면 플래그를 남기지 않아 다음 실행에 다시 시도한다
+        } else {
+            UserDefaults.standard.set(true, forKey: key)
+        }
     }
 
     // MARK: 보관 정리

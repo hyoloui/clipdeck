@@ -3,17 +3,26 @@ import SwiftUI
 
 /// 설정 창. 일반 `NSWindow`이며 한 번 만들어 재사용한다.
 @MainActor
-final class SettingsWindowController: NSObject {
+final class SettingsWindowController: NSObject, NSWindowDelegate {
     private let model: SettingsModel
     private var window: NSWindow?
+    /// 창을 열기 직전의 앞 앱. 닫을 때 되살려 다음 붙여넣기가 바로 직접 붙여넣기가 되게 한다.
+    private var previousApp: NSRunningApplication?
 
     init(model: SettingsModel) {
         self.model = model
+        super.init()
+        model.recording.window = { [weak self] in self?.window }
     }
 
     func show() {
+        if let front = NSWorkspace.shared.frontmostApplication,
+           front.processIdentifier != ProcessInfo.processInfo.processIdentifier {
+            previousApp = front
+        }
         model.reload()
         let window = self.window ?? makeWindow()
+        model.isWindowVisible = true
         NSApp.activate()
         window.makeKeyAndOrderFront(nil)
     }
@@ -25,8 +34,21 @@ final class SettingsWindowController: NSObject {
         window.title = "Clipdeck 설정"
         window.styleMask = [.titled, .closable]
         window.isReleasedWhenClosed = false
+        window.delegate = self
         window.center()
         self.window = window
         return window
+    }
+
+    // MARK: NSWindowDelegate
+
+    func windowWillClose(_ notification: Notification) {
+        model.isWindowVisible = false
+        if let app = previousApp, !app.isTerminated { app.activate() }
+        previousApp = nil
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        model.recording.cancel()
     }
 }

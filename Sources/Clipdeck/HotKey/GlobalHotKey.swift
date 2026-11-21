@@ -42,6 +42,17 @@ final class GlobalHotKey {
         return false
     }
 
+    /// 단축키 녹화 중에는 등록을 풀어 그 조합이 다른 앱·패널로 가지 않고 녹화기에 도달하게 한다
+    func suspend() {
+        unregister()
+    }
+
+    /// `suspend()` 뒤 현재 조합을 다시 등록한다
+    func resume() {
+        guard !isRegistered else { return }
+        isRegistered = register(spec)
+    }
+
     private func installEventHandler() {
         var type = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
         let status = InstallEventHandler(GetApplicationEventTarget(), { _, event, userData in

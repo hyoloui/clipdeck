@@ -3,12 +3,12 @@ import Foundation
 public enum RetentionPeriod: String, Codable, CaseIterable, Sendable {
     case day, week, month, year, forever
 
-    /// 이 시각보다 오래된 항목이 정리 대상이다. forever는 nil.
     /// 이 기간이 `other`보다 짧은가(day < week < month < year < forever)
     public func isShorter(than other: RetentionPeriod) -> Bool {
         Self.allCases.firstIndex(of: self)! < Self.allCases.firstIndex(of: other)!
     }
 
+    /// 이 시각보다 오래된 항목이 정리 대상이다. forever는 nil.
     public func cutoff(from now: Date) -> Date? {
         switch self {
         case .day: now.addingTimeInterval(-86_400)

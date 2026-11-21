@@ -47,7 +47,6 @@ struct PasteTab: View {
             }
         }
         .formStyle(.grouped)
-        .onAppear { access.start() }
-        .onDisappear { access.stop() }
+        .onReceive(model.$isWindowVisible) { $0 ? access.start() : access.stop() }
     }
 }
