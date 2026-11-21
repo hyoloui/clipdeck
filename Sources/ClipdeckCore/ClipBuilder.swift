@@ -8,6 +8,15 @@ public enum ClipBuilder {
 
     public static func make(representations: [Representation], sourceAppBundleID: String?,
                             sourceAppName: String?, policy: CapturePolicy) -> NewClip? {
+        make(representations: representations, recentBundleIDs: sourceAppBundleID.map { [$0] } ?? [],
+             sourceAppName: sourceAppName, policy: policy)
+    }
+
+    /// `recentBundleIDs`는 직전 확인 이후 앞에 있던 앱들(먼저 앞에 있던 순). 하나라도 "MCP에서 숨길 앱"이면 숨긴다.
+    /// 저장하는 출처 앱은 첫 앱(복사가 일어났을 가능성이 가장 높은 앱)이고, `sourceAppName`은 그 앱의 이름이다.
+    public static func make(representations: [Representation], recentBundleIDs: [String],
+                            sourceAppName: String?, policy: CapturePolicy) -> NewClip? {
+        let sourceAppBundleID = recentBundleIDs.first
         let plain = representations.first { $0.uti == PasteboardTypes.plainText }
             .flatMap { String(data: $0.data, encoding: .utf8) }
         guard let kind = KindClassifier.classify(utis: representations.map(\.uti), plainText: plain) else {
@@ -48,7 +57,7 @@ public enum ClipBuilder {
         let hash = SHA256.hash(data: hashSource).map { String(format: "%02x", $0) }.joined()
         // MCP·FTS에 닿는 텍스트는 앞 100KB만 담는다(비밀값 검사 범위와 같다). 붙여넣기는 표현을 쓰므로 전문이 간다.
         let storedText = plainText.map { ClipLimits.prefix($0) }
-        let hiddenApp = sourceAppBundleID.map { policy.mcpHiddenBundleIDs.contains($0) } ?? false
+        let hiddenApp = recentBundleIDs.contains(where: policy.mcpHiddenBundleIDs.contains)
         let hidden = hiddenApp || (policy.detectSecrets && storedText.map(SecretDetector.isSecret) == true)
         return NewClip(kind: kind, preview: preview, plainText: storedText, contentHash: hash,
                        sourceAppBundleID: sourceAppBundleID, sourceAppName: sourceAppName,

@@ -173,6 +173,34 @@ private let now = Date(timeIntervalSince1970: 1_000_000)
         #expect(ClipBuilder.make(representations: reps, sourceAppBundleID: nil, sourceAppName: nil, policy: p)?.mcpHidden == false)
     }
 
+    /// 복사 직후 앱을 바꿔도 직전 틱 이후 앞에 있던 앱들로 판정한다
+    @Test func recentAppsDecideSkip() {
+        let p = CapturePolicy(ignoredBundleIDs: ["com.ignored"])
+        let types = [PasteboardTypes.plainText]
+        #expect(p.decide(types: types, recentBundleIDs: ["com.ignored", "com.other"], now: now) == .skip(.ignoredApp))
+        #expect(p.decide(types: types, recentBundleIDs: ["com.other", "com.ignored"], now: now) == .skip(.ignoredApp))
+        #expect(p.decide(types: types, recentBundleIDs: ["com.other"], now: now) == .capture)
+        #expect(p.decide(types: types, recentBundleIDs: [], now: now) == .capture)
+    }
+
+    @Test func recentAppsMarkHidden() throws {
+        let p = CapturePolicy(mcpHiddenBundleIDs: ["com.hidden"])
+        let reps = [rep(PasteboardTypes.plainText, "x")]
+        let hidden = try #require(ClipBuilder.make(representations: reps, recentBundleIDs: ["com.hidden", "com.other"],
+                                                   sourceAppName: "Hidden", policy: p))
+        #expect(hidden.mcpHidden)
+        // 출처는 가장 먼저 앞에 있던 앱(복사가 일어났을 가능성이 가장 높은 앱)
+        #expect(hidden.sourceAppBundleID == "com.hidden")
+        #expect(hidden.sourceAppName == "Hidden")
+        #expect(ClipBuilder.make(representations: reps, recentBundleIDs: ["com.other", "com.hidden"],
+                                 sourceAppName: nil, policy: p)?.mcpHidden == true)
+        let normal = try #require(ClipBuilder.make(representations: reps, recentBundleIDs: ["com.other"],
+                                                   sourceAppName: "Other", policy: p))
+        #expect(!normal.mcpHidden)
+        #expect(normal.sourceAppBundleID == "com.other")
+        #expect(ClipBuilder.make(representations: reps, recentBundleIDs: [], sourceAppName: nil, policy: p)?.sourceAppBundleID == nil)
+    }
+
     @Test func fileWithoutDecodableURLIsNil() {
         let clip = ClipBuilder.make(representations: [Representation(uti: PasteboardTypes.fileURL, data: Data([0xFF, 0xFE]))],
                                     sourceAppBundleID: nil, sourceAppName: nil, policy: CapturePolicy())
