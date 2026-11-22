@@ -80,6 +80,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         purgeTimer = t
     }
 
+    /// 실행 중인 앱을 다시 실행하면(Spotlight, Finder, `open`) 패널을 연다. 단축키를 못 쓸 때의 다른 진입로다.
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        panelController?.show()
+        return false
+    }
+
     // MARK: 설정 반영
 
     /// 설정이 바뀌면 이 한 곳에서 각 부분에 반영한다. 캡처 정책(`PasteboardMonitor`)과 메뉴바 일시정지는
