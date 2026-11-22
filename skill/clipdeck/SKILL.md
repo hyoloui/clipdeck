@@ -62,5 +62,5 @@ Clipdeck는 이 Mac의 클립보드 기록을 보관한다. `clipdeck` MCP 서�
 ## 서버가 연결되지 않을 때
 
 1. Clipdeck 앱이 설치돼 있는지 확인한다(`~/Applications/Clipdeck.app`). 없으면 저장소의 `scripts/bundle.sh`로 설치해야 한다.
-2. 설치돼 있으면 `~/Desktop/project/clipdeck/scripts/register-mcp.sh`를 다시 실행하도록 사용자에게 안내한다.
+2. 설치돼 있으면 쓰는 클라이언트의 MCP 설정에 `clipdeck-mcp`가 등록돼 있는지 확인하고, 클라이언트를 다시 시작하도록 사용자에게 안내한다.
 3. 등록 뒤에는 사용 중인 LLM 클라이언트를 새로 시작해야 도구가 보인다.

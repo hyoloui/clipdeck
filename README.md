@@ -1,6 +1,6 @@
 # Clipdeck
 
-macOS용 로컬 클립보드 관리자. 복사한 텍스트·링크·이미지·파일·색을 기록하고, 단축키로 여는 패널에서 검색해 붙여넣는다. 같은 기록을 MCP 서버(`clipdeck-mcp`)로 열어 Claude·Codex·Antigravity가 검색·조회·복사할 수 있다. 데이터는 이 Mac 안에만 있고, 비밀값으로 판정된 항목은 MCP에서 숨긴다. 설계는 `docs/spec.md`에 있다.
+macOS용 로컬 클립보드 관리자. 복사한 텍스트·링크·이미지·파일·색을 기록하고, 단축키로 여는 패널에서 검색해 붙여넣는다. 같은 기록을 MCP 서버(`clipdeck-mcp`)로 열어, MCP를 지원하는 LLM 클라이언트가 검색·조회·복사할 수 있다. 데이터는 이 Mac 안에만 있고, 비밀값으로 판정된 항목은 MCP에서 숨긴다. 설계는 `docs/spec.md`에 있다.
 
 ## 요구 사항
 
@@ -33,20 +33,31 @@ scripts/bundle.sh              # 빌드 → ~/Applications/Clipdeck.app 조립·
 
 ## MCP 등록
 
-```sh
-scripts/register-mcp.sh --dry-run   # 실행할 명령만 확인
-scripts/register-mcp.sh             # skillshare로 claude·codex·antigravity에 등록·동기화·확인
+`clipdeck-mcp`는 표준 입출력(stdio)으로 동작하는 MCP 서버다. MCP를 지원하는 클라이언트라면 어느 것이든 쓸 수 있다. 쓰는 클라이언트의 MCP 설정에 아래 실행 파일을 인자 없이 등록한다.
+
+```
+~/Applications/Clipdeck.app/Contents/MacOS/clipdeck-mcp
 ```
 
-`skillshare`가 필요하다. 앱을 다시 설치한 뒤에는 한 번 더 실행해 확인한다.
+설정 파일이 JSON 형식인 클라이언트라면 보통 이런 모양이다. 경로는 절대 경로로 적는다.
 
-## 사용법 스킬 설치
-
-LLM이 도구를 올바르게 쓰게 하는 중앙 스킬이다. 저장소 폴더에서 실행한다.
-
-```sh
-skillshare-managed install ./skill/clipdeck
+```json
+{
+  "mcpServers": {
+    "clipdeck": { "command": "/Users/<사용자>/Applications/Clipdeck.app/Contents/MacOS/clipdeck-mcp" }
+  }
+}
 ```
+
+등록한 뒤 클라이언트를 다시 시작한다. 앱을 다시 설치했을 때도 클라이언트를 다시 시작해야 새 실행 파일이 쓰인다.
+
+여러 클라이언트의 MCP 설정을 한곳에서 관리하는 도구를 쓴다면 그 도구로 등록해도 된다. `scripts/register-mcp.sh`는 그런 도구 가운데 하나인 [skillshare](https://github.com/runkids/skillshare)를 쓰는 사람을 위한 예시 스크립트다. 꼭 쓸 필요는 없다.
+
+## 사용법 스킬 설치 (선택)
+
+`skill/clipdeck/SKILL.md`는 LLM이 이 도구를 올바르게 쓰도록 안내하는 문서다. 도구 8개의 용도, 권장 순서, 주의사항이 들어 있다. MCP 등록만으로도 도구는 동작하며, 스킬은 더 잘 쓰게 하는 보조 자료다.
+
+쓰는 LLM 클라이언트가 스킬(에이전트용 지시 문서)을 지원하면 `skill/clipdeck` 폴더를 그 클라이언트의 스킬 위치에 넣는다. 스킬 기능이 없는 클라이언트라면 `SKILL.md`의 내용을 시스템 프롬프트나 프로젝트 지침에 붙여 넣어도 된다.
 
 ## 데이터 위치
 
