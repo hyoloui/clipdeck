@@ -14,6 +14,11 @@ struct GeneralTab: View {
                 Toggle("효과음", isOn: model.binding(\.soundEffects))
                 Toggle("메뉴바 아이콘 표시", isOn: iconBinding)
             }
+            Section {
+                Button("패널 위치 초기화") { PanelOriginStore.reset() }
+            } footer: {
+                Text("패널을 끌어 옮긴 위치를 지우고, 다음에 열 때 화면 중앙에 띄웁니다.")
+            }
         }
         .formStyle(.grouped)
     }

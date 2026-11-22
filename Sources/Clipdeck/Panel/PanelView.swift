@@ -83,6 +83,7 @@ struct PanelView: View {
                 Divider()
                 PreviewView(item: model.selectedItem, loaded: loader.loaded, isRevealed: isRevealed,
                             onReveal: { presence.revealedItemID = model.selectedItem?.id })
+                    .background(WindowDragArea())
             }
             Divider()
             footer
@@ -132,6 +133,8 @@ struct PanelView: View {
         // 투명 제목 막대(약 28pt)가 검색창 클릭을 가로채지 않도록 그 아래에서 시작한다
         .padding(.top, Layout.s16 + Layout.s16)
         .padding(.bottom, Layout.s8)
+        // 여백(제목 막대 높이 포함)을 끌어 패널을 옮긴다. 컨트롤은 그 위에서 먼저 입력을 받는다.
+        .background(WindowDragArea())
     }
 
     private var boardTabs: some View {
@@ -150,7 +153,10 @@ struct PanelView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel("새 보드 만들기")
+                // 탭 오른쪽 빈 곳(스크롤 영역 안)도 끌어 옮길 수 있게 한다
+                WindowDragArea().frame(minWidth: Layout.s16, maxWidth: .infinity, minHeight: Layout.s24)
             }
+            .frame(minWidth: Layout.panelWidth - Layout.s16 * 2, alignment: .leading)
         }
         .frame(height: Layout.s24)
     }
@@ -228,5 +234,6 @@ struct PanelView: View {
             .padding(.horizontal, Layout.s16)
             .frame(height: Layout.s24 + Layout.s4, alignment: .leading)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .background(WindowDragArea())
     }
 }

@@ -7,6 +7,8 @@ import os
 final class ClipPanel: NSPanel {
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
+    /// 빈 영역 드래그가 끝났을 때(마우스 업) 부른다
+    var onDragEnd: (() -> Void)?
 }
 
 /// 패널을 한 번 만들어 재사용하고, 열고 닫기와 키 처리를 맡는다.
@@ -32,6 +34,10 @@ final class PanelController: NSObject {
     var keyMonitor: Any?
     var clickMonitor: Any?
     var resignObserver: NSObjectProtocol?
+    var moveObserver: NSObjectProtocol?
+    /// 열린 뒤 사용자가 패널을 옮겼는지(제목 막대 영역 드래그는 마우스 업 신호가 없어 닫을 때 저장한다)
+    var movedByUser = false
+    var isPositioning = false
     var keys = PanelKeyBindings()
     /// 패널이 열려 있는(또는 열려는) 논리 상태. 페이드아웃 중에는 false다.
     var isOpen = false
@@ -74,7 +80,10 @@ final class PanelController: NSObject {
         model.resetForShow()
         presence.revealedItemID = nil
         presence.generation += 1
+        isPositioning = true
         position(panel)
+        isPositioning = false
+        movedByUser = false
 
         // 숨겨져 있던 경우만 투명·축소 상태에서 시작해 스프링으로 등장시킨다(페이드 도중이면 현재 값에서 이어간다)
         if !panel.isVisible {
@@ -118,6 +127,7 @@ final class PanelController: NSObject {
         }
         isOpen = false
         removeMonitors()
+        if movedByUser { savePosition() }
         hideToken += 1
         guard animated else { finishHide(); return }
         let token = hideToken
@@ -156,6 +166,8 @@ final class PanelController: NSObject {
         panel.hidesOnDeactivate = false
         panel.isMovableByWindowBackground = false
         panel.setAccessibilityLabel("Clipdeck 검색 패널")
+        // 창 배경 전체가 아니라 PanelView의 WindowDragArea(빈 영역)에서만 끌어 옮긴다
+        panel.onDragEnd = { [weak self] in self?.savePosition() }
 
         let effect = NSVisualEffectView()
         effect.material = .hudWindow
@@ -181,17 +193,31 @@ final class PanelController: NSObject {
                 self.hide()
             }
         }
+        moveObserver = NotificationCenter.default.addObserver(
+            forName: NSWindow.didMoveNotification, object: panel, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated {
+                guard let self, !self.isPositioning else { return }
+                self.movedByUser = true
+            }
+        }
         self.panel = panel
         return panel
     }
 
-    /// 마우스가 있는 화면의 중앙. 없으면 주 화면.
+    /// 마우스가 있는 화면에 저장된 위치(화면 안으로 보정). 없으면 그 화면의 중앙.
     func position(_ panel: NSPanel) {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
-        let f = screen.visibleFrame
-        panel.setFrameOrigin(NSPoint(x: (f.midX - Layout.panelWidth / 2).rounded(),
-                                     y: (f.midY - Layout.panelHeight / 2).rounded()))
+        let origin = PanelPlacement.origin(saved: PanelOriginStore.load(for: screen),
+                                           panelSize: panel.frame.size, visibleFrame: screen.visibleFrame)
+        panel.setFrameOrigin(origin)
+    }
+
+    /// 드래그가 끝난 위치를 패널이 놓인 화면 기준으로 저장한다(끄는 동안에는 쓰지 않는다)
+    func savePosition() {
+        guard let panel, let screen = panel.screen else { return }
+        PanelOriginStore.save(panel.frame.origin, for: screen)
+        movedByUser = false
     }
 
     func focusSearchField() {
