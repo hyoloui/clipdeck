@@ -33,6 +33,9 @@ enum RelativeTime {
         return f
     }()
 
+    /// 목록 행과 미리보기가 같은 주기로 시각 표기를 갱신해 서로 어긋나지 않게 한다
+    static let refreshInterval: TimeInterval = 30
+
     static func string(from date: Date) -> String {
         if abs(date.timeIntervalSinceNow) < 5 { return "방금" }
         return formatter.localizedString(for: date, relativeTo: .now)
@@ -73,7 +76,10 @@ struct ItemRow: View {
                 .truncationMode(.tail)
                 .foregroundStyle(secondary)
                 .frame(width: Layout.appColumnWidth, alignment: .trailing)
-            Text(RelativeTime.string(from: item.lastUsedAt))
+            // 행은 항목이 바뀌지 않으면 다시 그려지지 않으므로, 시각 표기만 주기적으로 갱신한다
+            TimelineView(.periodic(from: .now, by: RelativeTime.refreshInterval)) { _ in
+                Text(RelativeTime.string(from: item.lastUsedAt))
+            }
                 .font(.caption)
                 .lineLimit(1)
                 .truncationMode(.tail)

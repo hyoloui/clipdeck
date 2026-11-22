@@ -182,14 +182,17 @@ struct PreviewView: View {
 
     private func footer(for item: ClipItem) -> some View {
         let bytes = (item.mcpHidden && !isRevealed) ? 0 : (loaded?.id == item.id ? loaded?.bytes ?? 0 : 0)
-        var parts: [String] = []
-        if let app = item.sourceAppName { parts.append(app) }
-        parts.append(RelativeTime.string(from: item.lastUsedAt))
-        if bytes > 0 { parts.append(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)) }
-        return Text(parts.joined(separator: " · "))
-            .font(.caption)
-            .foregroundStyle(.secondary)
-            .lineLimit(1)
-            .accessibilityLabel("출처 " + parts.joined(separator: ", "))
+        return TimelineView(.periodic(from: .now, by: RelativeTime.refreshInterval)) { _ in
+            let parts = [
+                item.sourceAppName,
+                RelativeTime.string(from: item.lastUsedAt),
+                bytes > 0 ? ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) : nil,
+            ].compactMap { $0 }
+            Text(parts.joined(separator: " · "))
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .lineLimit(1)
+                .accessibilityLabel("출처 " + parts.joined(separator: ", "))
+        }
     }
 }
