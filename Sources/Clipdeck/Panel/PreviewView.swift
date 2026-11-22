@@ -182,10 +182,10 @@ struct PreviewView: View {
 
     private func footer(for item: ClipItem) -> some View {
         let bytes = (item.mcpHidden && !isRevealed) ? 0 : (loaded?.id == item.id ? loaded?.bytes ?? 0 : 0)
-        return TimelineView(.periodic(from: .now, by: RelativeTime.refreshInterval)) { _ in
+        return TimelineView(RelativeTime.schedule) { context in
             let parts = [
                 item.sourceAppName,
-                RelativeTime.string(from: item.lastUsedAt),
+                RelativeTime.string(from: item.lastUsedAt, now: context.date),
                 bytes > 0 ? ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file) : nil,
             ].compactMap { $0 }
             Text(parts.joined(separator: " · "))

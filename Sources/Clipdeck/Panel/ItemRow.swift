@@ -34,11 +34,12 @@ enum RelativeTime {
     }()
 
     /// 목록 행과 미리보기가 같은 주기로 시각 표기를 갱신해 서로 어긋나지 않게 한다
-    static let refreshInterval: TimeInterval = 30
+    /// 모든 화면이 같은 순간에 갱신되고 같은 기준 시각을 쓰도록 시작점을 고정한 일정
+    static let schedule = PeriodicTimelineSchedule(from: Date(timeIntervalSinceReferenceDate: 0), by: 10)
 
-    static func string(from date: Date) -> String {
-        if abs(date.timeIntervalSinceNow) < 5 { return "방금" }
-        return formatter.localizedString(for: date, relativeTo: .now)
+    static func string(from date: Date, now: Date) -> String {
+        if abs(date.timeIntervalSince(now)) < 10 { return "방금" }
+        return formatter.localizedString(for: date, relativeTo: now)
     }
 }
 
@@ -77,8 +78,8 @@ struct ItemRow: View {
                 .foregroundStyle(secondary)
                 .frame(width: Layout.appColumnWidth, alignment: .trailing)
             // 행은 항목이 바뀌지 않으면 다시 그려지지 않으므로, 시각 표기만 주기적으로 갱신한다
-            TimelineView(.periodic(from: .now, by: RelativeTime.refreshInterval)) { _ in
-                Text(RelativeTime.string(from: item.lastUsedAt))
+            TimelineView(RelativeTime.schedule) { context in
+                Text(RelativeTime.string(from: item.lastUsedAt, now: context.date))
             }
                 .font(.caption)
                 .lineLimit(1)
@@ -123,7 +124,7 @@ struct ItemRow: View {
         parts.append(item.kind.accessibleName)
         parts.append(item.mcpHidden ? "가려진 항목" : item.preview)
         if let app = item.sourceAppName { parts.append(app) }
-        parts.append(RelativeTime.string(from: item.lastUsedAt))
+        parts.append(RelativeTime.string(from: item.lastUsedAt, now: .now))
         return parts.joined(separator: ", ")
     }
 }
