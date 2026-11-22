@@ -60,3 +60,7 @@ swift test
 ```
 
 샌드박스 안에서는 `swift test --disable-sandbox`를 쓴다.
+
+## 라이선스
+
+MIT. [LICENSE](LICENSE) 참고.
