@@ -56,6 +56,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.recording.onRecordingChange = { [weak self] recording in
             if recording { self?.hotKey?.suspend() } else { self?.hotKey?.resume() }
         }
+        model.resetPanelPosition = { [weak panel] in panel?.resetSavedPosition() }
         let settingsWindow = SettingsWindowController(model: model)
         self.settingsWindow = settingsWindow
         panel.onOpenSettings = { [weak settingsWindow] in settingsWindow?.show() }

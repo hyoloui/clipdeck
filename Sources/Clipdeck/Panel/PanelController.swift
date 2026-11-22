@@ -196,7 +196,8 @@ final class PanelController: NSObject {
         moveObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didMoveNotification, object: panel, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated {
-                guard let self, !self.isPositioning else { return }
+                // 마우스 버튼을 누른 채 일어난 이동만 사용자 이동(화면 구성 변경에 따른 이동은 제외)
+                guard let self, !self.isPositioning, NSEvent.pressedMouseButtons != 0 else { return }
                 self.movedByUser = true
             }
         }
@@ -209,8 +210,15 @@ final class PanelController: NSObject {
         let mouse = NSEvent.mouseLocation
         let screen = NSScreen.screens.first { $0.frame.contains(mouse) } ?? NSScreen.main ?? NSScreen.screens[0]
         let origin = PanelPlacement.origin(saved: PanelOriginStore.load(for: screen),
-                                           panelSize: panel.frame.size, visibleFrame: screen.visibleFrame)
+                                           panelSize: CGSize(width: Layout.panelWidth, height: Layout.panelHeight),
+                                           visibleFrame: screen.visibleFrame)
         panel.setFrameOrigin(origin)
+    }
+
+    /// 저장된 위치를 지운다(설정의 초기화 버튼). 이어지는 hide()가 다시 저장하지 않게 표시도 되돌린다.
+    func resetSavedPosition() {
+        PanelOriginStore.reset()
+        movedByUser = false
     }
 
     /// 드래그가 끝난 위치를 패널이 놓인 화면 기준으로 저장한다(끄는 동안에는 쓰지 않는다)

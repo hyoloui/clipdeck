@@ -13,13 +13,14 @@ enum PanelOriginStore {
         guard let id = screenID(screen),
               let text = defaults.dictionary(forKey: key)?[id] as? String else { return nil }
         let parts = text.split(separator: ",").compactMap { Double($0) }
-        return parts.count == 2 ? CGPoint(x: parts[0], y: parts[1]) : nil
+        guard parts.count == 2, parts.allSatisfy(\.isFinite) else { return nil }
+        return CGPoint(x: parts[0], y: parts[1])
     }
 
     static func save(_ origin: CGPoint, for screen: NSScreen, defaults: UserDefaults = .standard) {
         guard let id = screenID(screen) else { return }
         var all = defaults.dictionary(forKey: key) as? [String: String] ?? [:]
-        all[id] = "\(origin.x),\(origin.y)"
+        all[id] = "\(origin.x.rounded()),\(origin.y.rounded())"
         defaults.set(all, forKey: key)
     }
 

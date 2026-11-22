@@ -30,6 +30,8 @@ final class SettingsModel: ObservableObject {
     private var cancellables: Set<AnyCancellable> = []
     /// (새 값, 이전 값) → 반영 결과. AppDelegate가 연결한다.
     var apply: ((AppSettings, AppSettings) -> SettingsApplyResult)?
+    /// 저장된 패널 위치를 지운다. AppDelegate가 패널 컨트롤러에 연결한다.
+    var resetPanelPosition: (() -> Void)?
 
     init(store: ClipStore, settingsStore: SettingsStore) {
         self.store = store

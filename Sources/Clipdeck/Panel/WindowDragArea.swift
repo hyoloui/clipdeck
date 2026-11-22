@@ -14,8 +14,10 @@ struct WindowDragArea: NSViewRepresentable {
         override func mouseDown(with event: NSEvent) {
             guard let window else { return }
             // 마우스를 놓을 때까지 창을 따라 움직인다(비활성 패널이라 앞 앱의 활성 상태는 그대로)
+            let before = window.frame.origin
             window.performDrag(with: event)
-            (window as? ClipPanel)?.onDragEnd?()
+            // 클릭만 한 경우(위치 그대로)는 저장하지 않는다
+            if window.frame.origin != before { (window as? ClipPanel)?.onDragEnd?() }
         }
     }
 }
