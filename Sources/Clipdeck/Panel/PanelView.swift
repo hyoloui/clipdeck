@@ -89,7 +89,7 @@ struct PanelView: View {
             footer
         }
         .frame(width: Layout.panelWidth, height: Layout.panelHeight)
-        // 제목 막대 safe area만큼 내용이 밀리지 않게 한다
+        // 호스팅 뷰의 safe area 때문에 내용이 밀리지 않게 한다
         .ignoresSafeArea()
         .coordinateSpace(name: "panel")
         .onPreferenceChange(SelectedRowFrameKey.self) { presence.selectedRowFrame = $0 }
@@ -130,10 +130,10 @@ struct PanelView: View {
             boardTabs
         }
         .padding(.horizontal, Layout.s16)
-        // 투명 제목 막대(약 28pt)가 검색창 클릭을 가로채지 않도록 그 아래에서 시작한다
+        // 위쪽 띠(제목 막대가 있던 높이): 비워 두고 WindowDragArea로 끌어 옮길 수 있게 한다
         .padding(.top, Layout.s16 + Layout.s16)
         .padding(.bottom, Layout.s8)
-        // 여백(제목 막대 높이 포함)을 끌어 패널을 옮긴다. 컨트롤은 그 위에서 먼저 입력을 받는다.
+        // 여백(위쪽 띠 포함)을 끌어 패널을 옮긴다. 컨트롤은 그 위에서 먼저 입력을 받는다.
         .background(WindowDragArea())
     }
 

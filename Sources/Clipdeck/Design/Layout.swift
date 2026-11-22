@@ -10,6 +10,7 @@ enum Layout {
 
     static let panelWidth: CGFloat = 760
     static let panelHeight: CGFloat = 480
+    static let panelCorner: CGFloat = 16
     static let listWidth: CGFloat = 420
     static let rowHeight: CGFloat = 32
     static let rowCorner: CGFloat = 8

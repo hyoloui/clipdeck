@@ -34,10 +34,6 @@ final class PanelController: NSObject {
     var keyMonitor: Any?
     var clickMonitor: Any?
     var resignObserver: NSObjectProtocol?
-    var moveObserver: NSObjectProtocol?
-    /// 열린 뒤 사용자가 패널을 옮겼는지(제목 막대 영역 드래그는 마우스 업 신호가 없어 닫을 때 저장한다)
-    var movedByUser = false
-    var isPositioning = false
     var keys = PanelKeyBindings()
     /// 패널이 열려 있는(또는 열려는) 논리 상태. 페이드아웃 중에는 false다.
     var isOpen = false
@@ -80,10 +76,7 @@ final class PanelController: NSObject {
         model.resetForShow()
         presence.revealedItemID = nil
         presence.generation += 1
-        isPositioning = true
         position(panel)
-        isPositioning = false
-        movedByUser = false
 
         // 숨겨져 있던 경우만 투명·축소 상태에서 시작해 스프링으로 등장시킨다(페이드 도중이면 현재 값에서 이어간다)
         if !panel.isVisible {
@@ -91,6 +84,7 @@ final class PanelController: NSObject {
             panel.alphaValue = 0
         }
         panel.makeKeyAndOrderFront(nil)
+        panel.invalidateShadow()
         focusSearchField()
         installMonitors()
         presence.shown = true
@@ -127,7 +121,6 @@ final class PanelController: NSObject {
         }
         isOpen = false
         removeMonitors()
-        if movedByUser { savePosition() }
         hideToken += 1
         guard animated else { finishHide(); return }
         let token = hideToken
@@ -153,13 +146,12 @@ final class PanelController: NSObject {
 
     func makePanel() -> ClipPanel {
         let panel = ClipPanel(contentRect: NSRect(x: 0, y: 0, width: Layout.panelWidth, height: Layout.panelHeight),
-                              styleMask: [.nonactivatingPanel, .titled, .fullSizeContentView],
+                              styleMask: [.nonactivatingPanel, .borderless],
                               backing: .buffered, defer: false)
-        panel.titleVisibility = .hidden
-        panel.titlebarAppearsTransparent = true
-        for b in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
-            panel.standardWindowButton(b)?.isHidden = true
-        }
+        // 제목 막대가 없는 창: 상단 띠도 내용 뷰의 WindowDragArea가 받는다. 모양(둥근 모서리·그림자)은 직접 만든다.
+        panel.isOpaque = false
+        panel.backgroundColor = .clear
+        panel.hasShadow = true
         panel.level = .floating
         panel.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         panel.isReleasedWhenClosed = false
@@ -173,6 +165,10 @@ final class PanelController: NSObject {
         effect.material = .hudWindow
         effect.blendingMode = .behindWindow
         effect.state = .active
+        effect.wantsLayer = true
+        effect.layer?.cornerRadius = Layout.panelCorner
+        effect.layer?.cornerCurve = .continuous
+        effect.layer?.masksToBounds = true
         panel.contentView = effect
 
         let root = PanelView(model: model, presence: presence, loader: previewLoader,
@@ -193,14 +189,6 @@ final class PanelController: NSObject {
                 self.hide()
             }
         }
-        moveObserver = NotificationCenter.default.addObserver(
-            forName: NSWindow.didMoveNotification, object: panel, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated {
-                // 마우스 버튼을 누른 채 일어난 이동만 사용자 이동(화면 구성 변경에 따른 이동은 제외)
-                guard let self, !self.isPositioning, NSEvent.pressedMouseButtons != 0 else { return }
-                self.movedByUser = true
-            }
-        }
         self.panel = panel
         return panel
     }
@@ -215,17 +203,15 @@ final class PanelController: NSObject {
         panel.setFrameOrigin(origin)
     }
 
-    /// 저장된 위치를 지운다(설정의 초기화 버튼). 이어지는 hide()가 다시 저장하지 않게 표시도 되돌린다.
+    /// 저장된 위치를 지운다(설정의 초기화 버튼)
     func resetSavedPosition() {
         PanelOriginStore.reset()
-        movedByUser = false
     }
 
     /// 드래그가 끝난 위치를 패널이 놓인 화면 기준으로 저장한다(끄는 동안에는 쓰지 않는다)
     func savePosition() {
         guard let panel, let screen = panel.screen else { return }
         PanelOriginStore.save(panel.frame.origin, for: screen)
-        movedByUser = false
     }
 
     func focusSearchField() {
